@@ -1,0 +1,164 @@
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+
+export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const isApiRoute = pathname.startsWith("/api");
+
+  let supabaseResponse = NextResponse.next({ request });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          supabaseResponse = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  // Refresh the session — wrapped in try/catch so a Supabase outage
+  // doesn't crash the middleware with "TypeError: fetch failed".
+  let user: Awaited<
+    ReturnType<typeof supabase.auth.getUser>
+  >["data"]["user"] = null;
+
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // If Supabase is unreachable, treat as unauthenticated and continue.
+    return supabaseResponse;
+  }
+
+  let profileRole: string | null = null;
+  let profileWarehouseId: string | null = null;
+  let metadataRole: string | null = null;
+
+  if (user) {
+    metadataRole =
+      (user.app_metadata?.role as string | undefined) ??
+      (user.user_metadata?.role as string | undefined) ??
+      null;
+
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role,warehouse_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      profileRole = (profile?.role as string | undefined) ?? null;
+      profileWarehouseId =
+        (profile?.warehouse_id as string | null | undefined) ?? null;
+    } catch {
+      // Profile fetch failed — rely on metadata role only.
+    }
+  }
+
+  const isAdminRole = profileRole === "admin" || metadataRole === "admin";
+  const isWarehouseAdminRole =
+    profileRole === "warehouse_admin" || metadataRole === "warehouse_admin";
+
+  const unauthorizedResponse = (redirectTo: string) => {
+    if (isApiRoute) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("redirectTo", redirectTo);
+    return NextResponse.redirect(url);
+  };
+
+  const forbiddenResponse = (redirectTo?: string) => {
+    if (isApiRoute) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const url = request.nextUrl.clone();
+    if (redirectTo) {
+      url.pathname = "/login";
+      url.searchParams.set("redirectTo", redirectTo);
+    } else {
+      url.pathname = "/";
+      url.search = "";
+    }
+    return NextResponse.redirect(url);
+  };
+
+  // Protected routes for authenticated users
+  const protectedPaths = ["/account", "/checkout", "/wishlist"];
+  const isProtectedPath = protectedPaths.some((path) =>
+    pathname.startsWith(path)
+  );
+
+  if (isProtectedPath && !user) {
+    return unauthorizedResponse(pathname);
+  }
+
+  const isAdminSurface =
+    pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+  const isWarehouseProductUploadRoute =
+    pathname === "/api/admin/uploads/product-image";
+
+  // Admin surfaces protection
+  if (isAdminSurface) {
+    if (!user) {
+      return unauthorizedResponse(
+        pathname.startsWith("/api/") ? pathname : "/admin"
+      );
+    }
+    const canWarehouseAdminUploadProducts =
+      isWarehouseProductUploadRoute && isWarehouseAdminRole;
+    if (!isAdminRole && !canWarehouseAdminUploadProducts) {
+      return forbiddenResponse();
+    }
+  }
+
+  const isWarehouseSurface =
+    pathname.startsWith("/warehouse") || pathname.startsWith("/api/warehouse");
+
+  // Warehouse surfaces protection
+  if (isWarehouseSurface) {
+    if (!user) {
+      return unauthorizedResponse(
+        pathname.startsWith("/api/") ? pathname : "/warehouse"
+      );
+    }
+    // If logged in but not a warehouse admin, redirect to login so the
+    // user can sign in with a warehouse-admin account.
+    if (!isWarehouseAdminRole) {
+      return forbiddenResponse("/warehouse");
+    }
+    // Warehouse admin without an assigned warehouse — let them in and
+    // show them a helpful message on the dashboard.
+    if (!profileWarehouseId) {
+      return supabaseResponse;
+    }
+  }
+
+  // Redirect logged-in users away from auth pages.
+  // Exception: if a redirectTo param is present the user may be trying
+  // to re-authenticate with a different account, so let them through.
+  const authPaths = ["/login", "/signup", "/forgot-password"];
+  const isAuthPath = authPaths.some((path) => pathname === path);
+  const hasRedirectTo = request.nextUrl.searchParams.has("redirectTo");
+
+  if (isAuthPath && user && !hasRedirectTo) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
+
+  return supabaseResponse;
+}

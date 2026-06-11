@@ -36,7 +36,7 @@ import {
 import { NAV_LINKS } from "@/lib/constants";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, resetClient } from "@/lib/supabase/client";
 import type { Profile } from "@/types";
 
 type NavCategory = {
@@ -46,13 +46,19 @@ type NavCategory = {
   parent_id: string | null;
 };
 
-export default function Navbar() {
+export default function Navbar({ initialUser = null }: { initialUser?: import("@/types").Profile | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [user, setUser] = useState<Profile | null>(null);
+  const [user, setUser] = useState<Profile | null>(initialUser);
+
+  // When the server re-renders the layout with a new initialUser (e.g. after
+  // client-side navigation to a new layout segment), sync the state.
+  useEffect(() => {
+    setUser(initialUser ?? null);
+  }, [initialUser]);
   const [navCategories, setNavCategories] = useState<NavCategory[]>([]);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [activeParentCategoryId, setActiveParentCategoryId] = useState<string | null>(null);
@@ -112,6 +118,7 @@ export default function Navbar() {
     app_metadata?: { [key: string]: unknown };
   }): Profile => {
     const r = authUser.app_metadata?.role ?? authUser.user_metadata?.role ?? "user";
+    const ut = (authUser.app_metadata?.user_type as string | undefined) ?? "b2c";
     return {
       id: authUser.id,
       full_name: authUser.user_metadata?.full_name ?? null,
@@ -119,6 +126,7 @@ export default function Navbar() {
       phone: null,
       avatar_url: null,
       role: r as "user" | "admin" | "warehouse_admin",
+      user_type: ut as "b2c" | "b2b",
       is_active: true,
       created_at: "",
       updated_at: "",
@@ -156,24 +164,36 @@ export default function Navbar() {
     const supabase = createClient();
     let mounted = true;
 
-    const loadUser = async () => {
-      try {
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser();
-        if (!mounted) return;
-        if (authUser) setUser(mapAuthUserToProfile(authUser));
-      } catch {}
-    };
-
-    void loadUser();
-
+    // Subscribe to auth state changes for live updates (sign-in / sign-out / token refresh).
+    // Skip INITIAL_SESSION — the correct user is already provided via the initialUser prop
+    // from the server-side layout, which reads cookies reliably.
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
-      (_event: AuthChangeEvent, session: Session | null) => {
+      async (event: AuthChangeEvent, session: Session | null) => {
         if (!mounted) return;
-        setUser(session?.user ? mapAuthUserToProfile(session.user) : null);
+        // INITIAL_SESSION fires when the subscription is first set up.
+        // We already have the correct user from SSR, so skip it.
+        if (event === "INITIAL_SESSION") return;
+        if (session?.user) {
+          const basicProfile = mapAuthUserToProfile(session.user);
+          setUser(basicProfile);
+          // Refresh user_type from DB on auth state changes
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("user_type")
+            .eq("id", session.user.id)
+            .single();
+          if (mounted && profile) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ut = ((profile as any).user_type as "b2c" | "b2b") ?? "b2c";
+            setUser((prev) =>
+              prev ? { ...prev, user_type: ut } : null
+            );
+          }
+        } else {
+          setUser(null);
+        }
       },
     );
 
@@ -228,18 +248,30 @@ export default function Navbar() {
   };
 
   const handleLogout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    resetClient();
     setUser(null);
-    router.push("/");
-    router.refresh();
+    // Call the server-side signout API which clears the httpOnly session cookies
+    // and revokes the token on Supabase's servers. We await the fetch so the
+    // browser processes the Set-Cookie (maxAge=0) response headers BEFORE we
+    // navigate — this is what the form-submit approach failed to guarantee.
+    try {
+      await fetch("/api/auth/signout", { method: "POST" });
+    } catch {
+      // If the request fails, proceed anyway — cookies may already be expired
+    }
+    // Full page navigation so the server re-renders with cleared cookies.
+    // replace() avoids pushing a logged-in page onto the history stack.
+    window.location.replace("/login");
   };
+
+  const isB2B = user?.user_type === "b2b";
 
   return (
     <header
       className={`w-full bg-white transition-all sticky top-0 z-50 ${isScrolled ? "shadow-md" : "border-b border-border"}`}
     >
-      {/* 1. Top Utility Bar */}
+      {/* 1. Top Utility Bar — hidden for B2B users */}
+      {!isB2B && (
       <div className="bg-muted/50 text-muted-foreground text-[11px] py-1.5 hidden md:block">
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div
@@ -265,6 +297,7 @@ export default function Navbar() {
           </div>
         </div>
       </div>
+      )}
 
       {/* 2. Main Navigation Bar */}
       <div className="container mx-auto px-2 md:px-4 py-2.5 md:py-4">
@@ -309,24 +342,71 @@ export default function Navbar() {
                 <nav className="flex-1 overflow-y-auto py-2">
                   <div className="px-4 py-2">
                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                      Categories
+                      {isB2B ? "My Account" : "Categories"}
                     </p>
                   </div>
-                  {NAV_LINKS.map((link) => (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={
-                        "flex px-4 py-3 text-[15px] font-medium hover:bg-accent transition-colors " +
-                        (pathname === link.href
-                          ? "text-primary bg-primary/5"
-                          : "text-foreground")
-                      }
-                    >
-                      {link.label}
-                    </Link>
-                  ))}
+                  {isB2B ? (
+                    <>
+                      <Link
+                        href="/my-catalogue"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={
+                          "flex px-4 py-3 text-[15px] font-medium hover:bg-accent transition-colors " +
+                          (pathname === "/my-catalogue" ? "text-primary bg-primary/5" : "text-foreground")
+                        }
+                      >
+                        My Catalogue
+                      </Link>
+                      <Link
+                        href="/account/orders"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={
+                          "flex px-4 py-3 text-[15px] font-medium hover:bg-accent transition-colors " +
+                          (pathname === "/account/orders" ? "text-primary bg-primary/5" : "text-foreground")
+                        }
+                      >
+                        My Orders
+                      </Link>
+                      <Link
+                        href="/account"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={
+                          "flex px-4 py-3 text-[15px] font-medium hover:bg-accent transition-colors " +
+                          (pathname === "/account" ? "text-primary bg-primary/5" : "text-foreground")
+                        }
+                      >
+                        My Profile
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      {NAV_LINKS.map((link) => (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={
+                            "flex px-4 py-3 text-[15px] font-medium hover:bg-accent transition-colors " +
+                            (pathname === link.href ? "text-primary bg-primary/5" : "text-foreground")
+                          }
+                        >
+                          {link.label}
+                        </Link>
+                      ))}
+                      {user && user.role === "user" && (
+                        <Link
+                          href="/my-catalogue"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={
+                            "flex px-4 py-3 text-[15px] font-medium hover:bg-accent transition-colors " +
+                            (pathname === "/my-catalogue" ? "text-primary bg-primary/5" : "text-foreground")
+                          }
+                        >
+                          My Catalogue
+                        </Link>
+                      )}
+                    </>
+                  )}
                 </nav>
                 {/* Mobile Auth Bottom Frame */}
                 {user ? (
@@ -498,7 +578,8 @@ export default function Navbar() {
               </Link>
             )}
 
-            {/* Wishlist */}
+            {/* Wishlist — hidden for B2B users */}
+            {!isB2B && (
             <Link
               href="/wishlist"
               className="relative flex items-center gap-2 hover:bg-muted/50 p-1.5 md:px-2 md:py-1.5 rounded-lg transition-colors group"
@@ -515,6 +596,7 @@ export default function Navbar() {
                 Wishlist
               </span>
             </Link>
+            )}
 
             {/* Cart */}
             <Link
@@ -540,7 +622,35 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* 3. Bottom Category Strip + Mega Menu */}
+      {/* 3. Bottom Strip — B2B: catalogue nav, B2C: category strip + mega menu */}
+      {isB2B ? (
+        /* B2B simplified nav bar */
+        <div className="hidden lg:block bg-[#1878c9] text-white shadow-sm">
+          <div className="container mx-auto px-4">
+            <nav className="flex items-center gap-2 h-12">
+              <Link
+                href="/my-catalogue"
+                className={`rounded-md px-5 py-2.5 text-[13px] font-semibold text-white/95 transition-colors hover:bg-white/10 ${pathname === "/my-catalogue" ? "bg-white/20" : ""}`}
+              >
+                My Catalogue
+              </Link>
+              <Link
+                href="/account/orders"
+                className={`rounded-md px-5 py-2.5 text-[13px] font-semibold text-white/95 transition-colors hover:bg-white/10 ${pathname === "/account/orders" ? "bg-white/20" : ""}`}
+              >
+                My Orders
+              </Link>
+              <Link
+                href="/cart"
+                className={`rounded-md px-5 py-2.5 text-[13px] font-semibold text-white/95 transition-colors hover:bg-white/10 ${pathname === "/cart" ? "bg-white/20" : ""}`}
+              >
+                Cart
+              </Link>
+            </nav>
+          </div>
+        </div>
+      ) : (
+      /* B2C full category strip + mega menu */
       <div
         className="relative hidden lg:block bg-[#1878c9] text-white shadow-sm"
         onMouseLeave={() => setIsCategoryMenuOpen(false)}
@@ -570,6 +680,14 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
+              {user && user.role === "user" && (
+                <Link
+                  href="/my-catalogue"
+                  className="rounded-md px-6 py-3 text-[13px] font-semibold text-white/95 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  My Catalogue
+                </Link>
+              )}
             </div>
           </nav>
 
@@ -643,6 +761,7 @@ export default function Navbar() {
           )}
         </div>
       </div>
+      )}
     </header>
   );
 }

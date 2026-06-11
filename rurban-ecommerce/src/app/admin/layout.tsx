@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Package, FolderTree, ImageIcon, TicketPercent,
   ShoppingCart, Users, Star, Settings, Megaphone,
   Menu, PanelLeftClose, PanelLeft,
-  Warehouse, BookOpen,
+  Warehouse, BookOpen, Tag, LogOut, Home, UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -40,6 +40,8 @@ const sidebarGroups = [
     items: [
       { label: "Orders", href: "/admin/orders", icon: ShoppingCart },
       { label: "Customers", href: "/admin/customers", icon: Users },
+      { label: "B2B Users", href: "/admin/b2b-users", icon: UserCheck },
+      { label: "User Prices", href: "/admin/user-prices", icon: Tag },
     ],
   },
   {
@@ -107,6 +109,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const handleSignOut = async () => {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/api/auth/signout";
+    document.body.appendChild(form);
+    form.submit();
+  };
+
   return (
     <div className="min-h-screen bg-muted/20 flex">
       {/* Desktop Sidebar */}
@@ -164,6 +174,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
 
           <div className="flex items-center gap-2">
+            <Link href="/">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground hidden sm:flex">
+                <Home className="h-4 w-4" /> View Store
+              </Button>
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleSignOut()}
+              className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </Button>
             <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center shadow-sm">
               <span className="text-xs font-bold text-primary-foreground">A</span>
             </div>

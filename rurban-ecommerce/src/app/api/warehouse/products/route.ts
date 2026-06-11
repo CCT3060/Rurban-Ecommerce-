@@ -36,14 +36,33 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("products")
-    .select("*, category:categories(*), images:product_images(*), variants:product_variants(*)")
-    .eq("warehouse_id", auth.context.warehouseId)
-    .order("created_at", { ascending: false });
+  // Paginate through all rows — Supabase caps a single .select() at 1000 rows.
+  // Use a secondary sort on `id` to guarantee a stable order across pages.
+  const PAGE = 1000;
+  let page = 0;
+  const seen = new Set<string>();
+  const all: unknown[] = [];
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ data: data ?? [] });
+  while (true) {
+    const { data, error } = await admin
+      .from("products")
+      .select("*, category:categories(*), images:product_images(*), variants:product_variants(*)")
+      .or(`warehouse_id.eq.${auth.context.warehouseId},warehouse_id.is.null`)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    for (const row of data ?? []) {
+      const id = (row as { id: string }).id;
+      if (!seen.has(id)) { seen.add(id); all.push(row); }
+    }
+    if ((data ?? []).length < PAGE) break;
+    page++;
+  }
+
+  return NextResponse.json({ data: all });
 }
 
 export async function POST(request: Request) {

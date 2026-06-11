@@ -20,10 +20,12 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   const admin = createAdminClient();
+  // Include both warehouse-specific categories AND global categories (warehouse_id IS NULL)
   const { data, error } = await admin
     .from("categories")
     .select("*")
-    .eq("warehouse_id", auth.context.warehouseId)
+    .or(`warehouse_id.eq.${auth.context.warehouseId},warehouse_id.is.null`)
+    .eq("status", "active")
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
 

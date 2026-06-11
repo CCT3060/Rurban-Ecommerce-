@@ -30,21 +30,54 @@ async function requireAdmin() {
   return { ok: true as const };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
+  const { searchParams } = new URL(request.url);
+  const search = searchParams.get("search") ?? "";
+  const status = searchParams.get("status") ?? "";
+  const categoryId = searchParams.get("categoryId") ?? "";
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+  const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") ?? "50", 10)));
+  const offset = (page - 1) * limit;
+
   const admin = createAdminClient();
-  const { data, error } = await admin
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = admin as any;
+
+  let query = db
     .from("products")
-    .select("*, category:categories(*), images:product_images(*)")
-    .order("created_at", { ascending: false });
+    .select(
+      "id, name, slug, sku, price, sale_price, stock, status, brand, is_featured, is_trending, is_new_arrival, category_id, zoho_item_id, zoho_category_name, hsn_or_sac, product_type, zoho_unit, zoho_item_type, intra_state_tax_name, intra_state_tax_rate, intra_state_tax_type, inter_state_tax_name, inter_state_tax_rate, created_at, updated_at, category:categories(id, name), images:product_images(id, image_url, is_primary, sort_order)",
+      { count: "exact" }
+    )
+    .order("name", { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  if (status) query = query.eq("status", status);
+  if (categoryId) query = query.eq("category_id", categoryId);
+
+  const { data, error, count } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ data });
+  // Apply search filter in JS (covers name, sku, zoho_category_name, hsn_or_sac)
+  let rows = (data ?? []) as Record<string, unknown>[];
+  if (search) {
+    const q = search.toLowerCase();
+    rows = rows.filter((p) =>
+      String(p.name ?? "").toLowerCase().includes(q) ||
+      String(p.sku ?? "").toLowerCase().includes(q) ||
+      String(p.zoho_category_name ?? "").toLowerCase().includes(q) ||
+      String(p.hsn_or_sac ?? "").toLowerCase().includes(q) ||
+      String((p.category as Record<string, unknown> | null)?.name ?? "").toLowerCase().includes(q)
+    );
+  }
+
+  return NextResponse.json({ data: rows, total: count ?? rows.length });
 }
 
 interface CreateProductBody {

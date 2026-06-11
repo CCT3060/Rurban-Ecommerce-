@@ -1,6 +1,5 @@
 // ─── Backend API base URL ────────────────────────────────────────────────────
-// Physical device on same WiFi — uses the machine's local IP
-export const API_BASE = 'http://192.168.1.7:3000';
+export const API_BASE = 'http://13.200.222.72';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface Banner {

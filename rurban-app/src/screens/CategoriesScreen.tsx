@@ -48,23 +48,35 @@ export default function CategoriesScreen({ navigation }: { navigation: any }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Build grouped sections: parent → children
+  // Build grouped sections: parent → children, or flat grid if no hierarchy
   const sections: Section[] = useMemo(() => {
     const q = search.toLowerCase();
-    const parents = allCategories.filter(c => !c.parent_id);
-    const children = allCategories.filter(c => c.parent_id);
+    const hasHierarchy = allCategories.some(c => c.parent_id != null);
 
-    return parents.map(parent => {
-      const kids = children.filter(c => c.parent_id === parent.id);
+    if (hasHierarchy) {
+      // Grouped: parent sections with their children
+      const parents = allCategories.filter(c => !c.parent_id);
+      const children = allCategories.filter(c => c.parent_id);
+      return parents.map(parent => {
+        const kids = children.filter(c => c.parent_id === parent.id);
+        const filtered = q
+          ? kids.filter(k => k.name.toLowerCase().includes(q))
+          : kids;
+        return {
+          title: parent.name,
+          image_url: parent.image_url,
+          data: chunkIntoRows(filtered, COLS),
+        };
+      }).filter(s => s.data.length > 0);
+    } else {
+      // Flat: all categories in one grid, no section headers
       const filtered = q
-        ? kids.filter(k => k.name.toLowerCase().includes(q))
-        : kids;
-      return {
-        title: parent.name,
-        image_url: parent.image_url,
-        data: chunkIntoRows(filtered, COLS),
-      };
-    }).filter(s => s.data.length > 0);
+        ? allCategories.filter(c => c.name.toLowerCase().includes(q))
+        : allCategories;
+      return filtered.length > 0
+        ? [{ title: '', data: chunkIntoRows(filtered, COLS) }]
+        : [];
+    }
   }, [allCategories, search]);
 
   return (

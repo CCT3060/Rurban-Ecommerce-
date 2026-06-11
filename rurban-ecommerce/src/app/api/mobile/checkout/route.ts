@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendPushToTokens } from "@/lib/push-notifications";
 
 function getBearerToken(request: Request): string | null {
   const auth = request.headers.get("Authorization");
@@ -93,6 +94,20 @@ export async function POST(request: Request) {
   const lineItems = Array.from(normalizedCart.values());
   const productIds = [...new Set(lineItems.map(i => i.productId))];
 
+  // Fetch custom prices for B2B users
+  const { data: customPricesData } = await admin
+    .from("user_product_prices")
+    .select("product_id, custom_price")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .in("product_id", productIds);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const customPriceMap = new Map<string, number>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((customPricesData ?? []) as any[]).map((row: any) => [row.product_id as string, Number(row.custom_price)])
+  );
+
   const { data: productsData, error: productsError } = await admin
     .from("products")
     .select("id,name,price,sale_price,stock,status,images:product_images(image_url,is_primary)")
@@ -134,7 +149,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Insufficient stock for ${product.name}` }, { status: 400 });
     }
 
-    const unitPrice = product.sale_price ? Number(product.sale_price) : Number(product.price);
+    const unitPrice = customPriceMap.has(item.productId)
+      ? customPriceMap.get(item.productId)!
+      : product.sale_price ? Number(product.sale_price) : Number(product.price);
     subtotal += unitPrice * item.quantity;
 
     const primaryImg = (product.images ?? []).find(img => img.is_primary)?.image_url
@@ -191,6 +208,64 @@ export async function POST(request: Request) {
   for (const item of lineItems) {
     await admin.rpc("decrement_stock", { p_product_id: item.productId, p_quantity: item.quantity }).maybeSingle();
   }
+
+  // ── Push notifications ─────────────────────────────────────────────────────
+  // Fire and forget — don't let notification errors fail the order response
+  void (async () => {
+    try {
+      // 1. Get the user's push token
+      const { data: userProfile } = await admin
+        .from("profiles")
+        .select("push_token, full_name, warehouse_id")
+        .eq("id", user.id)
+        .maybeSingle() as unknown as { data: { push_token: string | null; full_name: string | null; warehouse_id: string | null } | null };
+
+      // Notify the user
+      if (userProfile?.push_token) {
+        await sendPushToTokens(
+          [userProfile.push_token],
+          "Order Placed! 🎉",
+          `Your order ${order.order_number} has been placed successfully. Total: ₹${Number(order.total).toLocaleString("en-IN")}`,
+          { screen: "Orders", order_number: order.order_number }
+        );
+      }
+
+      // 2. Find warehouse admins whose warehouse has products in this order
+      //    and notify them about the new order
+      const productIdsInOrder = lineItems.map((i) => i.productId);
+      const { data: warehouseProducts } = await admin
+        .from("products")
+        .select("warehouse_id")
+        .in("id", productIdsInOrder) as unknown as { data: { warehouse_id: string | null }[] | null };
+
+      const warehouseIds = [...new Set((warehouseProducts ?? []).map((p) => p.warehouse_id).filter(Boolean))] as string[];
+
+      // Also include the B2B user's own warehouse (if applicable)
+      if (userProfile?.warehouse_id && !warehouseIds.includes(userProfile.warehouse_id)) {
+        warehouseIds.push(userProfile.warehouse_id);
+      }
+
+      if (warehouseIds.length > 0) {
+        const { data: warehouseAdmins } = await admin
+          .from("profiles")
+          .select("push_token")
+          .eq("role", "warehouse_admin")
+          .in("warehouse_id", warehouseIds)
+          .not("push_token", "is", null) as unknown as { data: { push_token: string }[] | null };
+
+        if (warehouseAdmins && warehouseAdmins.length > 0) {
+          await sendPushToTokens(
+            warehouseAdmins.map((a) => a.push_token),
+            "New Order Received! 📦",
+            `Order ${order.order_number} — ₹${Number(order.total).toLocaleString("en-IN")} — ${itemsWithOrderId.length} item(s)`,
+            { screen: "WarehouseDashboard", order_number: order.order_number }
+          );
+        }
+      }
+    } catch {
+      // Swallow — notifications must never break checkout
+    }
+  })();
 
   return NextResponse.json({
     data: {

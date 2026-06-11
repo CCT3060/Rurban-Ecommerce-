@@ -33,9 +33,12 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   const { data: profile } = await admin
     .from("profiles")
-    .select("id,full_name,email,phone,avatar_url,role")
+    .select("id,full_name,email,phone,avatar_url,role,user_type")
     .eq("id", data.user.id)
     .single();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const profileRow = profile as any;
 
   return NextResponse.json({
     access_token: data.session.access_token,
@@ -43,10 +46,11 @@ export async function POST(request: Request) {
     user: {
       id: data.user.id,
       email: data.user.email ?? email,
-      full_name: profile?.full_name ?? "",
-      phone: profile?.phone ?? "",
-      avatar_url: profile?.avatar_url ?? "",
-      role: profile?.role ?? "user",
+      full_name: profileRow?.full_name ?? "",
+      phone: profileRow?.phone ?? "",
+      avatar_url: profileRow?.avatar_url ?? "",
+      role: profileRow?.role ?? "user",
+      user_type: (profileRow?.user_type as string | undefined) ?? "b2c",
     },
   });
 }

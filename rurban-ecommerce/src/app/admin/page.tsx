@@ -70,7 +70,7 @@ async function getDashboardData() {
     admin.from("orders").select("id", { count: "exact", head: true }).gte("created_at", todayStart),
     admin.from("orders").select("id", { count: "exact", head: true }).gte("created_at", monthStart),
     admin.from("warehouses").select("id", { count: "exact", head: true }).eq("is_active", true),
-    admin.from("products").select("id", { count: "exact", head: true }),
+    admin.from("products").select("id", { count: "exact", head: true }).eq("status", "active").not("zoho_item_id", "is", null),
     admin.from("orders").select("id,order_number,total,status,created_at,user:profiles(full_name)").order("created_at", { ascending: false }).limit(5),
     admin.from("order_items").select("product_id,name,quantity,price"),
     admin.from("products").select("id,name,sku,stock").gt("stock", 0).order("stock", { ascending: true }).limit(5),
@@ -179,7 +179,7 @@ async function DashboardContent({ dataPromise }: { dataPromise: ReturnType<typeo
       value: todayOrders,
       icon: ShoppingCart,
       iconBg: "bg-rose-100",
-      iconColor: "text-rose-600",
+      iconColor: "text-rose-600",               
       footer: <span className="text-xs text-muted-foreground">{todayLabel}</span>,
     },
     {

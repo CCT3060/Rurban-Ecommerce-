@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "754508053415",
+    "project_id": "rurban-ecommerce",
+    "storage_bucket": "rurban-ecommerce.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:754508053415:android:eae959a55c4c45708c9482",
+        "android_client_info": {
+          "package_name": "com.rurban.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQYN1-m2j-r4GxF-GwqCTgYvjxuLWTZow"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

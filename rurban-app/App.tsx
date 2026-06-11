@@ -9,11 +9,17 @@ import {
   View, ActivityIndicator, Text, StyleSheet,
   TouchableOpacity, Animated,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { CartProvider, useCart } from './src/context/CartContext';
 import { WishlistProvider } from './src/context/WishlistContext';
 import { COLORS } from './src/lib/theme';
+import {
+  configureForegroundNotifications,
+  registerForPushNotifications,
+  savePushToken,
+} from './src/lib/notifications';
 
 import HomeScreen           from './src/screens/HomeScreen';
 import CategoriesScreen     from './src/screens/CategoriesScreen';
@@ -26,8 +32,10 @@ import ProfileScreen        from './src/screens/ProfileScreen';
 import WishlistScreen       from './src/screens/WishlistScreen';
 import AllProductsScreen      from './src/screens/AllProductsScreen';
 import ProductDetailScreen   from './src/screens/ProductDetailScreen';
+import B2BCatalogueScreen from './src/screens/B2BCatalogueScreen';
 import LoginScreen           from './src/screens/LoginScreen';
 import SignupScreen          from './src/screens/SignupScreen';
+import WarehouseDashboardScreen from './src/screens/WarehouseDashboardScreen';
 
 const Tab       = createBottomTabNavigator();
 const HomeStack = createNativeStackNavigator();
@@ -35,6 +43,8 @@ const CatStack  = createNativeStackNavigator();
 const CartStack = createNativeStackNavigator();
 const AuthStack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator();
+const B2BStack  = createNativeStackNavigator();
+const WHStack   = createNativeStackNavigator();
 
 // ─── Navigators ───────────────────────────────────────────────────────────────
 
@@ -182,6 +192,72 @@ const vc = StyleSheet.create({
   btnText:   { color: '#fff', fontSize: 13, fontWeight: '800' },
 });
 
+// ─── B2B Catalogue Stack ─────────────────────────────────────────────────────
+
+function B2BCatalogueStack() {
+  return (
+    <B2BStack.Navigator screenOptions={{ headerShown: false }}>
+      <B2BStack.Screen name="CatalogueMain" component={B2BCatalogueScreen} />
+      <B2BStack.Screen name="ProductDetail" component={ProductDetailScreen} />
+    </B2BStack.Navigator>
+  );
+}
+// ─── Warehouse Stack ─────────────────────────────────────────────────────────────
+
+function WarehouseStack() {
+  return (
+    <WHStack.Navigator screenOptions={{ headerShown: false }}>
+      <WHStack.Screen name="WarehouseDashboard" component={WarehouseDashboardScreen} />
+    </WHStack.Navigator>
+  );
+}
+// ─── B2B Tabs (catalogue + orders + profile) ──────────────────────────────────
+
+function B2BTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarIcon: ({ focused, color, size }) => {
+          const icons: Record<string, [string, string]> = {
+            Catalogue: ['grid',    'grid-outline'],
+            Orders:    ['receipt', 'receipt-outline'],
+            Profile:   ['person',  'person-outline'],
+          };
+          const [on, off] = icons[route.name] ?? ['ellipse', 'ellipse-outline'];
+          return <Ionicons name={(focused ? on : off) as any} size={size} color={color} />;
+        },
+        tabBarActiveTintColor:   '#111111',
+        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginBottom: 2 },
+        tabBarStyle: {
+          borderTopWidth: 1,
+          borderTopColor: '#E5E7EB',
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 6,
+          backgroundColor: '#fff',
+        },
+      })}
+    >
+      <Tab.Screen name="Catalogue" component={B2BCatalogueStack} />
+      <Tab.Screen name="Orders"    component={OrdersScreen} />
+      <Tab.Screen name="Profile"   component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+}
+
+function B2BWithOverlay() {
+  return (
+    <View style={{ flex: 1 }}>
+      <B2BTabs />
+      <ViewCartBar />
+    </View>
+  );
+}
+
 // ─── Main tabs (no Cart tab) ──────────────────────────────────────────────────
 
 function MainTabs() {
@@ -247,7 +323,41 @@ function AuthNavigator() {
 // ─── Root Navigator ───────────────────────────────────────────────────────────
 
 function RootNavigator() {
-  const { user, isLoading } = useAuth();
+  const { user, token, isLoading } = useAuth();
+  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+  const responseListener = useRef<Notifications.EventSubscription | null>(null);
+
+  // Register push token whenever the user logs in
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+    (async () => {
+      const pushToken = await registerForPushNotifications();
+      if (!cancelled && pushToken) {
+        await savePushToken(pushToken, token);
+      }
+    })();
+
+    // Listen for notifications received while app is foregrounded
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('[push] Received:', notification.request.content);
+    });
+
+    // Listen for user tapping a notification
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data as { screen?: string } | undefined;
+      console.log('[push] Tapped notification → screen:', data?.screen);
+      // Navigation from notifications can be wired here if needed
+    });
+
+    return () => {
+      cancelled = true;
+      notificationListener.current?.remove();
+      responseListener.current?.remove();
+    };
+  }, [token]);
+
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' }}>
@@ -259,8 +369,17 @@ function RootNavigator() {
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
         <>
-          {/* Main app + floating cart bar */}
-          <RootStack.Screen name="Main" component={MainWithOverlay} />
+          {/* Route based on role/user_type */}
+          <RootStack.Screen
+            name="Main"
+            component={
+              user.role === 'warehouse_admin'
+                ? WarehouseStack
+                : user.user_type === 'b2b'
+                  ? B2BWithOverlay
+                  : MainWithOverlay
+            }
+          />
           {/* Cart pushed as a full screen over the tabs */}
           <RootStack.Screen name="Cart" component={CartStackNav} />
         </>
@@ -270,6 +389,9 @@ function RootNavigator() {
     </RootStack.Navigator>
   );
 }
+
+// Configure how notifications appear when the app is open (must be top-level)
+configureForegroundNotifications();
 
 // ─── App Entry ────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -16,10 +16,20 @@ import { toast } from "sonner";
 function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/";
+  const signedOut = searchParams.get("signedOut") === "1";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // If the user arrived via sign-out (?signedOut=1), ensure the
+  // client-side Supabase session is fully cleared.
+  useEffect(() => {
+    if (signedOut) {
+      const supabase = createClient();
+      void supabase.auth.signOut();
+    }
+  }, [signedOut]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,23 +39,52 @@ function LoginForm() {
       const supabase = createClient();
 
       // If already signed in as a different account, sign out first
-      // so the new credentials take full effect.
       const { data: { user: existing } } = await supabase.auth.getUser();
       if (existing) {
         await supabase.auth.signOut();
       }
 
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (error) {
-        toast.error(error.message);
+      if (error || !data.user) {
+        toast.error(error?.message ?? "Login failed");
         return;
       }
 
       toast.success("Logged in successfully!");
-      // Use a hard navigation so the server middleware picks up the
-      // fresh session cookies on the very next request.
-      window.location.href = redirectTo;
+
+      // If the caller specified an explicit redirect (e.g. /warehouse), honour it
+      if (redirectTo && redirectTo !== "/") {
+        window.location.href = redirectTo;
+        return;
+      }
+
+      // Otherwise route based on role / user_type
+      const role = (data.user.app_metadata?.role ?? data.user.user_metadata?.role) as string | undefined;
+      if (role === "admin") {
+        window.location.href = "/admin";
+        return;
+      }
+      if (role === "warehouse_admin") {
+        window.location.href = "/warehouse";
+        return;
+      }
+
+      // For regular users, check if they are B2B
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("user_type")
+        .eq("id", data.user.id)
+        .single();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const userType = (profile as any)?.user_type as string | undefined;
+      if (userType === "b2b") {
+        window.location.href = "/my-catalogue";
+        return;
+      }
+
+      window.location.href = "/";
     } catch {
       toast.error("Something went wrong. Please try again.");
     } finally {

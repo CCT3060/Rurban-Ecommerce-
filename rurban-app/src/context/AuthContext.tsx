@@ -9,6 +9,7 @@ export interface AuthUser {
   phone: string;
   avatar_url: string;
   role: string;
+  user_type: 'b2c' | 'b2b';
 }
 
 interface AuthState {
@@ -44,7 +45,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ]);
         if (storedToken && storedUser) {
           setToken(storedToken);
-          setUser(JSON.parse(storedUser));
+          const parsedUser = JSON.parse(storedUser) as AuthUser;
+          // Ensure user_type exists for users stored before this field was added
+          if (!parsedUser.user_type) parsedUser.user_type = 'b2c';
+          setUser(parsedUser);
         }
       } catch {
         // ignore storage errors

@@ -14,6 +14,7 @@ import { formatPrice, IMAGE_PLACEHOLDER } from "@/lib/constants";
 import { normalizeSupabaseImageUrl } from "@/lib/utils";
 import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
+import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Product } from "@/types";
 
@@ -33,6 +34,7 @@ export default function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [userCustomPrice, setUserCustomPrice] = useState<number | null>(null);
 
   const addToCart = useCartStore((state) => state.addItem);
   const { toggleItem, isInWishlist } = useWishlistStore();
@@ -45,8 +47,26 @@ export default function ProductDetailPage() {
         const response = await fetch(`/api/products/${slug}`, { cache: "no-store" });
         const json = (await response.json()) as ProductResponse;
         if (!response.ok) throw new Error(json.error || "Failed to load product");
-        setProduct(json.data ?? null);
+        const loadedProduct = json.data ?? null;
+        setProduct(loadedProduct);
         setRelatedProducts(json.related ?? []);
+
+        // Fetch custom price for logged-in user
+        if (loadedProduct) {
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const priceRes = await fetch(
+              `/api/user-prices?productId=${loadedProduct.id}`,
+              { cache: "no-store" }
+            );
+            if (priceRes.ok) {
+              const priceJson = (await priceRes.json()) as { data?: Record<string, number> };
+              const cp = priceJson.data?.[loadedProduct.id];
+              setUserCustomPrice(cp !== undefined ? cp : null);
+            }
+          }
+        }
       } catch {
         setProduct(null);
         setRelatedProducts([]);
@@ -105,14 +125,18 @@ export default function ProductDetailPage() {
   const displayMrp = Math.max(0, product.price + priceModifier);
   const displaySale = product.sale_price !== null ? Math.max(0, product.sale_price + priceModifier) : null;
 
+  // Use custom price if available for this user (overrides default pricing)
+  const effectiveDisplayPrice = userCustomPrice !== null ? userCustomPrice : (displaySale ?? displayMrp);
+  const hasCustomPrice = userCustomPrice !== null;
+
   const handleAddToCart = () => {
     addToCart({
       productId: product.id,
       variantId: selectedVariant?.id ?? null,
       quantity,
       name: product.name,
-      price: displayMrp,
-      salePrice: displaySale,
+      price: hasCustomPrice ? effectiveDisplayPrice : displayMrp,
+      salePrice: hasCustomPrice ? null : displaySale,
       image: normalizeSupabaseImageUrl(product.images?.[0]?.image_url) || IMAGE_PLACEHOLDER,
       stock: effectiveStock,
       variantInfo: selectedVariant?.value,
@@ -177,8 +201,15 @@ export default function ProductDetailPage() {
             </div>
 
             <div className="flex items-baseline gap-3">
-              <span className="text-3xl font-bold text-foreground">{formatPrice(displaySale ?? displayMrp)}</span>
-              {displaySale !== null && <span className="text-lg text-muted-foreground line-through">{formatPrice(displayMrp)}</span>}
+              <span className="text-3xl font-bold text-foreground">{formatPrice(effectiveDisplayPrice)}</span>
+              {!hasCustomPrice && displaySale !== null && (
+                <span className="text-lg text-muted-foreground line-through">{formatPrice(displayMrp)}</span>
+              )}
+              {hasCustomPrice && (
+                <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                  Special Price
+                </span>
+              )}
             </div>
 
             {product.short_description && <p className="text-muted-foreground leading-relaxed">{product.short_description}</p>}

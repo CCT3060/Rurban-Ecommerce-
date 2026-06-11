@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { generateSlug } from "@/lib/constants";
 
@@ -36,6 +37,7 @@ type CategoryFormState = {
 
 export default function AdminCategoriesPage() {
   const router = useRouter();
+  // ── Store categories state
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -44,6 +46,7 @@ export default function AdminCategoriesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<CategoryFormState>({
     name: "",
     slug: "",
@@ -291,6 +294,44 @@ export default function AdminCategoriesPage() {
     }
   };
 
+  const toggleSelectCategory = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allCategoriesSelected = categories.length > 0 && categories.every((c) => selectedIds.has(c.id));
+
+  const toggleSelectAllCategories = () => {
+    if (allCategoriesSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(categories.map((c) => c.id)));
+    }
+  };
+
+  const handleBulkDeleteCategories = async () => {
+    const count = selectedIds.size;
+    const confirmed = window.confirm(`Delete ${count} selected categor${count > 1 ? "ies" : "y"}? Products in these categories will be uncategorized.`);
+    if (!confirmed) return;
+
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) =>
+          fetch(`/api/admin/categories/${id}`, { method: "DELETE" })
+        )
+      );
+      toast.success(`${count} categor${count > 1 ? "ies" : "y"} deleted`);
+      setSelectedIds(new Set());
+      await fetchCategories();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete categories");
+    }
+  };
+
   const toggleCategoryExpanded = (categoryId: string) => {
     setExpandedCategoryIds((prev) => {
       const next = new Set(prev);
@@ -311,7 +352,14 @@ export default function AdminCategoriesPage() {
       const isExpanded = expandedCategoryIds.has(cat.id);
 
       rows.push(
-        <TableRow key={cat.id}>
+        <TableRow key={cat.id} className={selectedIds.has(cat.id) ? "bg-muted/50" : ""}>
+          <TableCell className="pl-4 w-10">
+            <Checkbox
+              checked={selectedIds.has(cat.id)}
+              onCheckedChange={() => toggleSelectCategory(cat.id)}
+              aria-label={`Select ${cat.name}`}
+            />
+          </TableCell>
           <TableCell className="font-medium">
             <div className="flex items-center gap-2" style={{ paddingLeft: `${depth * 14}px` }}>
               {hasChildren ? (
@@ -365,6 +413,11 @@ export default function AdminCategoriesPage() {
           <p className="text-sm text-muted-foreground">{categories.length} categories</p>
         </div>
         <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" className="gap-2" onClick={() => void handleBulkDeleteCategories()}>
+              <Trash2 className="h-4 w-4" /> Delete {selectedIds.size} selected
+            </Button>
+          )}
           <div className="inline-flex items-center rounded-2xl border bg-background p-1">
             <Button
               type="button"
@@ -564,6 +617,13 @@ export default function AdminCategoriesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10 pl-4">
+                  <Checkbox
+                    checked={allCategoriesSelected}
+                    onCheckedChange={toggleSelectAllCategories}
+                    aria-label="Select all categories"
+                  />
+                </TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Slug</TableHead>
                 <TableHead>Parent</TableHead>
@@ -575,14 +635,14 @@ export default function AdminCategoriesPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     Loading categories...
                   </TableCell>
                 </TableRow>
               )}
               {!loading && categories.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     No categories found.
                   </TableCell>
                 </TableRow>
@@ -599,8 +659,16 @@ export default function AdminCategoriesPage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {categories.map((cat) => (
-                    <Card key={cat.id} className="overflow-hidden border-border/70">
+                    <Card key={cat.id} className={`overflow-hidden border-border/70 ${selectedIds.has(cat.id) ? "ring-2 ring-primary" : ""}`}>
                       <div className="relative h-32 bg-muted/20">
+                        <div className="absolute top-2 left-2 z-10">
+                          <Checkbox
+                            checked={selectedIds.has(cat.id)}
+                            onCheckedChange={() => toggleSelectCategory(cat.id)}
+                            aria-label={`Select ${cat.name}`}
+                            className="bg-white/90 border-2"
+                          />
+                        </div>
                         {cat.image_url ? (
                           <Image src={cat.image_url} alt={cat.name} fill className="object-cover" sizes="320px" />
                         ) : (

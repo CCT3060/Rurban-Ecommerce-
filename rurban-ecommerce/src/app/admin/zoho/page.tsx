@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   RefreshCw, CheckCircle2, XCircle, AlertCircle,
-  Info, Loader2, BookOpen, ArrowRight,
+  Info, Loader2, BookOpen, ArrowRight, Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +39,8 @@ export default function AdminZohoPage() {
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [testing, setTesting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationMsg, setMigrationMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Load connection status and last sync result
   const loadData = useCallback(async () => {
@@ -83,9 +85,30 @@ export default function AdminZohoPage() {
     }
   };
 
+  // Run DB migration to add extended Zoho columns
+  const handleMigration = async () => {
+    setMigrating(true);
+    setMigrationMsg(null);
+    try {
+      const res = await fetch("/api/admin/setup/migrate", { method: "POST" });
+      const json = (await res.json()) as { message?: string; error?: string; sql?: string };
+      if (res.ok) {
+        setMigrationMsg({ ok: true, text: json.message ?? "Migration applied!" });
+      } else {
+        setMigrationMsg({
+          ok: false,
+          text: json.error ?? "Migration failed. Run the SQL in Supabase Dashboard → SQL Editor.",
+        });
+      }
+    } catch {
+      setMigrationMsg({ ok: false, text: "Network error running migration." });
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   // Trigger a full sync
-  const handleSync = async () => {
-    setSyncing(true);
+  const handleSync = async () => {    setSyncing(true);
     try {
       const res = await fetch("/api/admin/zoho/sync", { method: "POST" });
       const json = (await res.json()) as { data?: SyncResult; error?: string };
@@ -193,6 +216,57 @@ export default function AdminZohoPage() {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Database migration card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            Database Migration
+          </CardTitle>
+          <CardDescription>
+            Run once to add extended Zoho fields (HSN/SAC, tax columns, etc.) to the products table.
+            Safe to run multiple times.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleMigration}
+            disabled={migrating}
+            className="gap-2"
+          >
+            {migrating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+            {migrating ? "Running…" : "Apply Migration"}
+          </Button>
+          {migrationMsg && (
+            <div className={`rounded-md border p-3 text-sm ${
+              migrationMsg.ok
+                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                : "bg-amber-50 border-amber-200 text-amber-800"
+            }`}>
+              {migrationMsg.text}
+              {!migrationMsg.ok && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-medium">Show SQL to run manually</summary>
+                  <pre className="mt-2 text-xs font-mono whitespace-pre-wrap bg-white/60 rounded p-2 overflow-x-auto">{`ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS hsn_or_sac            text,
+  ADD COLUMN IF NOT EXISTS product_type          text,
+  ADD COLUMN IF NOT EXISTS zoho_category_name    text,
+  ADD COLUMN IF NOT EXISTS intra_state_tax_name  text,
+  ADD COLUMN IF NOT EXISTS intra_state_tax_rate  numeric(10,2),
+  ADD COLUMN IF NOT EXISTS intra_state_tax_type  text,
+  ADD COLUMN IF NOT EXISTS inter_state_tax_name  text,
+  ADD COLUMN IF NOT EXISTS inter_state_tax_rate  numeric(10,2),
+  ADD COLUMN IF NOT EXISTS zoho_unit             text,
+  ADD COLUMN IF NOT EXISTS zoho_item_type        text;`}</pre>
+                </details>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

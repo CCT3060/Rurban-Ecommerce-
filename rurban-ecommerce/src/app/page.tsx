@@ -1,11 +1,13 @@
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
 import HomePage from "./(shop)/page";
+import { getInitialUser } from "@/lib/auth/get-initial-user";
 
-export default function RootHomePage() {
+export default async function RootHomePage() {
+	const initialUser = await getInitialUser();
 	return (
 		<>
-			<Navbar />
+			<Navbar initialUser={initialUser} />
 			<main className="flex-1">
 				<HomePage />
 			</main>

@@ -45,23 +45,36 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
+  // Count products by zoho_category_name (same field the Products page uses from Zoho).
+  // This is more reliable than counting by category_id FK, which can be NULL if the
+  // sync ran before the category existed or if name matching failed during sync.
   const { data: productRows, error: productError } = await admin
     .from("products")
-    .select("category_id")
-    .not("category_id", "is", null);
+    .select("zoho_category_name")
+    .eq("status", "active")
+    .not("zoho_item_id", "is", null)
+    .not("zoho_category_name", "is", null);
 
   if (productError) {
     return NextResponse.json({ error: productError.message }, { status: 400 });
   }
 
-  const directCounts = new Map<string, number>();
+  // Build name → count map (normalised to lowercase)
+  const nameCount = new Map<string, number>();
   for (const row of productRows ?? []) {
-    const id = row.category_id as string | null;
-    if (!id) continue;
-    directCounts.set(id, (directCounts.get(id) ?? 0) + 1);
+    const name = String(row.zoho_category_name ?? "").trim().toLowerCase();
+    if (name) nameCount.set(name, (nameCount.get(name) ?? 0) + 1);
   }
 
   const categoryRows = categories ?? [];
+
+  // Map name counts → category id counts so the recursive roll-up still works
+  const directCounts = new Map<string, number>();
+  for (const cat of categoryRows) {
+    const key = String(cat.name ?? "").trim().toLowerCase();
+    const count = nameCount.get(key) ?? 0;
+    if (count > 0) directCounts.set(cat.id as string, count);
+  }
   const childrenByParent = new Map<string, string[]>();
   for (const category of categoryRows) {
     if (!category.parent_id) continue;

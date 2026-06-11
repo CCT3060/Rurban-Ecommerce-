@@ -7,6 +7,7 @@ export interface Profile {
   phone: string | null;
   avatar_url: string | null;
   role: "user" | "admin" | "warehouse_admin";
+  user_type: "b2c" | "b2b";
   warehouse_id?: string | null;
   is_active: boolean;
   created_at: string;

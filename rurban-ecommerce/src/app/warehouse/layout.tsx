@@ -1,27 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { Building2, LayoutDashboard, Package, FolderTree, ShoppingCart, Home, LogOut } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Building2, LayoutDashboard, Package, FolderTree, ShoppingCart, Home, LogOut, Tag, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
   { label: "Dashboard", href: "/warehouse", icon: LayoutDashboard },
   { label: "Categories", href: "/warehouse/categories", icon: FolderTree },
   { label: "Products", href: "/warehouse/products", icon: Package },
   { label: "Orders", href: "/warehouse/orders", icon: ShoppingCart },
+  { label: "B2B Users", href: "/warehouse/b2b-users", icon: UserCheck },
+  { label: "User Prices", href: "/warehouse/user-prices", icon: Tag },
 ];
 
 export default function WarehouseLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
 
-  const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login?redirectTo=/warehouse");
-    router.refresh();
+  const handleSignOut = () => {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/api/auth/signout";
+    document.body.appendChild(form);
+    form.submit();
   };
 
   return (

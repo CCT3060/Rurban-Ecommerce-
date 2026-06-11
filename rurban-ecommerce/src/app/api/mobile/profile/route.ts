@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
   const { data: profile, error } = await admin
     .from("profiles")
-    .select("id,full_name,email,phone,avatar_url,role,created_at")
+    .select("id,full_name,email,phone,avatar_url,role,user_type,created_at")
     .eq("id", user.id)
     .single();
 
@@ -49,9 +49,12 @@ export async function GET(request: Request) {
 
   const totalSaved = (orders ?? []).reduce((sum: number, o: { discount: number }) => sum + Number(o.discount ?? 0), 0);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const profileRow = profile as any;
+
   return NextResponse.json({
     data: {
-      ...profile,
+      ...profileRow,
       order_count: orderCount ?? 0,
       wishlist_count: wishlistCount ?? 0,
       total_saved: Math.round(totalSaved),

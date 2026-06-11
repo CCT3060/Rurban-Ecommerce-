@@ -127,6 +127,18 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
 
+  // Fetch custom prices for this user (active only)
+  const { data: customPricesData } = await admin
+    .from("user_product_prices")
+    .select("product_id, custom_price")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .in("product_id", productIds);
+
+  const customPriceMap = new Map<string, number>(
+    (customPricesData ?? []).map((row) => [row.product_id as string, Number(row.custom_price)])
+  );
+
   const { data: productsData, error: productsError } = await admin
     .from("products")
     .select("id,name,price,sale_price,stock,status,images:product_images(image_url,is_primary)")
@@ -207,7 +219,10 @@ export async function POST(request: Request) {
     const mrp = Math.max(0, basePrice + priceModifier);
     const salePrice =
       baseSalePrice === null ? null : Math.max(0, baseSalePrice + priceModifier);
-    const unitPrice = salePrice ?? mrp;
+
+    // Custom price overrides default pricing when active for this user
+    const customPrice = customPriceMap.get(product.id);
+    const unitPrice = customPrice !== undefined ? customPrice : (salePrice ?? mrp);
 
     subtotal += unitPrice * item.quantity;
 

@@ -1,7 +1,9 @@
 ﻿export const dynamic = 'force-dynamic';
 
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import HeroSlider from "@/components/home/hero-slider";
 import SectionBannerStrip from "@/components/home/section-banner-strip";
@@ -164,6 +166,35 @@ async function getHomeData() {
 }
 
 export default async function HomePage() {
+  // Redirect B2B users to their catalogue view
+  try {
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      // Check app_metadata first (set reliably at B2B user creation),
+      // then fall back to DB profile
+      const metaUserType = user.app_metadata?.user_type as string | undefined;
+      let isB2B = metaUserType === "b2b";
+
+      if (!isB2B) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("user_type")
+          .eq("id", user.id)
+          .single();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        isB2B = (profile as any)?.user_type === "b2b";
+      }
+
+      if (isB2B) {
+        redirect("/my-catalogue");
+      }
+    }
+  } catch (e) {
+    // If redirect() was called, re-throw it; otherwise ignore DB errors
+    if ((e as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT")) throw e;
+  }
+
   const {
     sections,
     banners,

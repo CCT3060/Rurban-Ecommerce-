@@ -100,7 +100,7 @@ export default function WarehouseB2BUsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Coustomer</h1>
+          <h1 className="text-2xl font-bold">Customer</h1>
           <p className="text-sm text-muted-foreground">{users.length} B2B accounts assigned to this warehouse</p>
         </div>
         <div className="flex items-center gap-2">

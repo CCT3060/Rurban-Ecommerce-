@@ -78,17 +78,25 @@ export async function GET(
     return NextResponse.json({ error: orderError?.message ?? "Order not found" }, { status: 404 });
   }
 
-  // Fetch all items for this order
+  // Fetch all items for this order, including product tax/HSN fields
   const { data: items, error: itemsError } = await admin
     .from("order_items")
-    .select("id,name,quantity,price,variant_info,image_url,product_id")
+    .select("id,name,quantity,price,variant_info,image_url,product_id,product:products(hsn_or_sac,intra_state_tax_rate,zoho_unit)")
     .eq("order_id", id);
 
   if (itemsError) {
     return NextResponse.json({ error: itemsError.message }, { status: 400 });
   }
 
-  return NextResponse.json({ data: { ...order, items: items ?? [] } });
+  // Flatten product fields onto each item
+  const flatItems = (items ?? []).map(({ product, ...item }) => ({
+    ...item,
+    hsn_or_sac: (product as { hsn_or_sac?: string | null } | null)?.hsn_or_sac ?? null,
+    intra_state_tax_rate: (product as { intra_state_tax_rate?: number | null } | null)?.intra_state_tax_rate ?? null,
+    zoho_unit: (product as { zoho_unit?: string | null } | null)?.zoho_unit ?? null,
+  }));
+
+  return NextResponse.json({ data: { ...order, items: flatItems } });
 }
 
 export async function PATCH(

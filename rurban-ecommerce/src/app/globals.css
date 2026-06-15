@@ -99,7 +99,7 @@
 @layer utilities {
   .container {
     width: 100%;
-    max-width: 1300px !important;
+      width: 1300px !important;
     margin-inline: auto !important;
   }
 }
@@ -115,4 +115,42 @@
 
 @keyframes fade-in-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 .animate-fade-in-up { animation: fade-in-up 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+/* ── Order PDF / Print styles ────────────────────────────────────────────── */
+@media print {
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  /* Use visibility instead of display:none so children can override */
+  body {
+    background: white !important;
+    visibility: hidden !important;
+  }
+
+  /* Make the PO document and all its descendants visible */
+  .po-document,
+  .po-document * {
+    visibility: visible !important;
+  }
+
+  /* Hide screen-only toolbar */
+  .no-print { display: none !important; }
+
+  /* Position PO document at top-left, full width */
+  .po-document {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+}
   

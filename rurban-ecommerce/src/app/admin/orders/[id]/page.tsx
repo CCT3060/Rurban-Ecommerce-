@@ -1,22 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import {
-  ArrowLeft, Package, MapPin, CreditCard, User, Clock,
-  ChevronDown, Printer,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft, ChevronDown, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import Image from "next/image";
 
-/* ─── Types ─────────────────────────────────────────────────────────────── */
+/* ─── Types ───────────────────────────────────────────────────────────────── */
 type OrderStatus = "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
 type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
 
@@ -28,6 +23,10 @@ type OrderItem = {
   quantity: number;
   image_url: string | null;
   variant_info: string | null;
+  hsn_or_sac?: string | null;
+  intra_state_tax_rate?: number | null;
+  inter_state_tax_rate?: number | null;
+  zoho_unit?: string | null;
 };
 
 type Address = {
@@ -61,7 +60,18 @@ type OrderDetail = {
   order_items: OrderItem[];
 };
 
-/* ─── Helpers ────────────────────────────────────────────────────────────── */
+/* ─── Constants ───────────────────────────────────────────────────────────── */
+const COMPANY = {
+  name: "RURBAN INDIA PRIVATE LIMITED",
+  formerly: '"formerly known as Rural Urban Tradelink Pvt. Ltd."',
+  address: "Office No 401-402, Yash Tower, D P Road, Opp: D A V Public School, Aundh, Pune - 411007",
+  dispatch: 'Leelai Park S.N.-42/1, Near, Raghunandan Karyalay,,Dange Chowk,, Pune, Maharashtra - 411033, India',
+  gstin: "27AALCR3287Q1ZE",
+  fssai: "11522037000299",
+  cin: "U51909PN2021PTC204755",
+  unit: "MAHARASHTRA",
+};
+
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-700",
   confirmed: "bg-blue-100 text-blue-700",
@@ -80,28 +90,23 @@ const paymentColors: Record<string, string> = {
 
 const STATUS_FLOW: OrderStatus[] = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
 
-function AddressBlock({ label, address }: { label: string; address: Address | null }) {
-  if (!address) return null;
-  const lines = [
-    address.full_name,
-    address.phone,
-    address.address_line1,
-    address.address_line2,
-    [address.city, address.state, address.pincode].filter(Boolean).join(", "),
-    address.country,
-  ].filter(Boolean);
-  if (lines.length === 0) return null;
-  return (
-    <div>
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
-      {lines.map((line, i) => (
-        <p key={i} className="text-sm leading-5">{line}</p>
-      ))}
-    </div>
-  );
+function fmt(n: number) {
+  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/* ─── Page ───────────────────────────────────────────────────────────────── */
+function addrBlock(a: Address | null): string[] {
+  if (!a) return [];
+  return [
+    a.full_name,
+    a.address_line1,
+    a.address_line2,
+    [a.city, a.state, a.pincode].filter(Boolean).join(" "),
+    a.country,
+    a.phone ? `Ph: ${a.phone}` : null,
+  ].filter(Boolean) as string[];
+}
+
+/* ─── Page ────────────────────────────────────────────────────────────────── */
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -161,13 +166,30 @@ export default function OrderDetailPage() {
     );
   }
 
+  const orderDate = new Date(order.created_at);
   const customerName = order.user?.full_name ?? order.shipping_address?.full_name ?? "Customer";
-  const customerEmail = order.user?.email ?? "—";
+  const customerEmail = order.user?.email ?? "";
+  const customerPhone = order.user?.phone ?? "";
+  const deliverLines = addrBlock(order.shipping_address);
+
+  // Tax breakdown grouped by rate
+  const taxGroups = new Map<number, { cgst: number; sgst: number }>();
+  order.order_items.forEach((item) => {
+    const rate = item.intra_state_tax_rate ?? 0;
+    const lineTotal = Number(item.price) * item.quantity;
+    const existing = taxGroups.get(rate) ?? { cgst: 0, sgst: 0 };
+    taxGroups.set(rate, {
+      cgst: existing.cgst + (lineTotal * rate) / 100,
+      sgst: existing.sgst + (lineTotal * rate) / 100,
+    });
+  });
+
+  const totalQty = order.order_items.reduce((s, i) => s + i.quantity, 0);
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <>
+      {/* ── Screen-only toolbar ────────────────────────────────────── */}
+      <div className="no-print mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => router.back()} className="shrink-0">
             <ArrowLeft className="h-4 w-4" />
@@ -175,241 +197,260 @@ export default function OrderDetailPage() {
           <div>
             <h1 className="text-xl font-bold">Order {order.order_number}</h1>
             <p className="text-xs text-muted-foreground">
-              Placed on {new Date(order.created_at).toLocaleString("en-IN", {
-                day: "numeric", month: "short", year: "numeric",
-                hour: "2-digit", minute: "2-digit",
-              })}
+              Placed on {orderDate.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 pl-11 sm:pl-0">
-          {/* Order Status */}
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={updating}
               className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm hover:bg-accent disabled:opacity-50"
             >
-              <Badge className={`border-0 pointer-events-none ${statusColors[order.status]}`}>
-                {order.status}
-              </Badge>
+              <Badge className={`border-0 pointer-events-none ${statusColors[order.status]}`}>{order.status}</Badge>
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {STATUS_FLOW.map((s) => (
-                <DropdownMenuItem
-                  key={s}
-                  disabled={s === order.status}
-                  onClick={() => void updateOrder({ status: s })}
-                >
+                <DropdownMenuItem key={s} disabled={s === order.status} onClick={() => void updateOrder({ status: s })}>
                   <Badge className={`border-0 mr-2 ${statusColors[s]}`}>{s}</Badge>
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => void updateOrder({ payment_status: "paid" })} disabled={order.payment_status === "paid"}>
-                Mark Paid
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void updateOrder({ payment_status: "refunded" })} disabled={order.payment_status === "refunded"}>
-                Mark Refunded
-              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void updateOrder({ payment_status: "paid" })} disabled={order.payment_status === "paid"}>Mark Paid</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void updateOrder({ payment_status: "refunded" })} disabled={order.payment_status === "refunded"}>Mark Refunded</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm hover:bg-accent"
-          >
-            <Printer className="h-3.5 w-3.5" /> Print
-          </button>
+          <Badge className={`border-0 ${paymentColors[order.payment_status]}`}>{order.payment_status}</Badge>
+          <Button variant="default" size="sm" className="gap-2" onClick={() => window.print()}>
+            <Download className="h-3.5 w-3.5" /> Export PDF
+          </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ── Left: Items + Summary ────────────────────────── */}
-        <div className="lg:col-span-2 space-y-6">
+      {/* ── INVOICE DOCUMENT ──────────────────────────────────────────
+          Matches the exact PO template layout from the PDF image.
+      ─────────────────────────────────────────────────────────────── */}
+      <div className="po-document bg-white text-[#1a1a1a] border border-[#d1d5db] max-w-[900px] mx-auto text-[13px] print:max-w-none print:border-0 print:shadow-none" style={{ fontFamily: "Arial, sans-serif" }}>
 
-          {/* Items */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Package className="h-4 w-4 text-muted-foreground" />
-                Items ({order.order_items.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y">
-                {order.order_items.map((item) => (
-                  <div key={item.id} className="flex gap-3 px-6 py-4">
-                    <div className="h-16 w-16 shrink-0 rounded-lg border bg-muted overflow-hidden flex items-center justify-center">
-                      {item.image_url ? (
-                        <Image
-                          src={item.image_url}
-                          alt={item.name}
-                          width={64}
-                          height={64}
-                          className="object-contain w-full h-full"
-                        />
-                      ) : (
-                        <Package className="h-6 w-6 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium leading-5">{item.name}</p>
-                      {item.variant_info && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{item.variant_info}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-1">Qty: {item.quantity}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold">₹{(Number(item.price) * item.quantity).toLocaleString("en-IN")}</p>
-                      <p className="text-xs text-muted-foreground">₹{Number(item.price).toLocaleString("en-IN")} each</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        {/* ── SECTION 1: Company header ──────────────────────────── */}
+        <div className="flex items-start border-b border-[#d1d5db]">
+          {/* Left: Logo + company info */}
+          <div className="flex items-start gap-3 flex-1 px-5 pt-4 pb-3">
+            {/* Logo */}
+            <div className="shrink-0 w-[72px]">
+              <Image
+                src="/images/logo.png"
+                alt="RURBAN"
+                width={72}
+                height={72}
+                className="object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            </div>
+            {/* Company text */}
+            <div className="leading-snug">
+              <p className="font-bold text-[15px]">{COMPANY.name}</p>
+              <p className="font-bold text-[12px]">{COMPANY.name}</p>
+              <p className="text-[11px]">{COMPANY.formerly}</p>
+              <p className="text-[11px]">Dispatched From: {COMPANY.dispatch}</p>
+              <p className="text-[11px]">FSSAI NO: {COMPANY.fssai}</p>
+              <p className="text-[11px]">GSTIN {COMPANY.gstin}</p>
+              <p className="text-[11px] mt-1">UNIT NAME: {COMPANY.unit}</p>
+            </div>
+          </div>
 
-              {/* Price summary */}
-              <div className="px-6 py-4 bg-muted/30 space-y-2 border-t">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>₹{Number(order.subtotal).toLocaleString("en-IN")}</span>
-                </div>
-                {Number(order.discount) > 0 && (
-                  <div className="flex justify-between text-sm text-green-600">
-                    <span>Discount</span>
-                    <span>−₹{Number(order.discount).toLocaleString("en-IN")}</span>
-                  </div>
-                )}
-                {Number(order.tax) > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tax</span>
-                    <span>₹{Number(order.tax).toLocaleString("en-IN")}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Shipping</span>
-                  <span>{Number(order.shipping_cost) === 0 ? "Free" : `₹${Number(order.shipping_cost).toLocaleString("en-IN")}`}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between font-bold text-base">
-                  <span>Total</span>
-                  <span>₹{Number(order.total).toLocaleString("en-IN")}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Notes */}
-          {order.notes && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Order Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{order.notes}</p>
-              </CardContent>
-            </Card>
-          )}
+          {/* Right: "PURCHASE ORDER" big title */}
+          <div className="shrink-0 px-5 pt-4 pb-3 flex items-start">
+            <p className="text-[32px] font-black tracking-wide text-[#1a1a1a] uppercase leading-none">Order Summary</p>
+          </div>
         </div>
 
-        {/* ── Right: Meta cards ────────────────────────────── */}
-        <div className="space-y-4">
+        {/* ── SECTION 2: Order meta info (2-column grid) ─────────── */}
+        <div className="grid grid-cols-2 border-b border-[#d1d5db]">
+          {/* Left: Order# / Date / Terms / Delivery */}
+          <div className="px-5 py-2 border-r border-[#d1d5db] space-y-[3px]">
+            <div className="flex gap-1 text-[11px]">
+              <span className="font-semibold w-[110px] shrink-0">Order Summary</span>
+              <span>: <strong>{order.order_number}</strong></span>
+            </div>
+            <div className="flex gap-1 text-[11px]">
+              <span className="font-semibold w-[110px] shrink-0">Date </span>
+              <span>: {orderDate.toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
+            </div>
+            <div className="flex gap-1 text-[11px]">
+              <span className="font-semibold w-[110px] shrink-0">Terms </span>
+              <span>: <strong className="capitalize">{order.payment_method ?? "Advance Payment"}</strong></span>
+            </div>
+            <div className="flex gap-1 text-[11px]">
+              <span className="font-semibold w-[110px] shrink-0">Payment Status </span>
+              <span>: <span className="capitalize">{order.payment_status}</span></span>
+            </div>
+          </div>
+          {/* Right: Place of supply / Status */}
+          <div className="px-5 py-2 space-y-[3px]">
+            <div className="flex gap-1 text-[11px]">
+              <span className="font-semibold w-[110px] shrink-0">Place Of Supply </span>
+              <span>: Maharashtra (27)</span>
+            </div>
+            <div className="flex gap-1 text-[11px]">
+              <span className="font-semibold w-[110px] shrink-0">Order Status </span>
+              <span>: <span className="capitalize">{order.status}</span></span>
+            </div>
+          </div>
+        </div>
 
-          {/* Customer */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground" /> Customer
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              <p className="text-sm font-medium">{customerName}</p>
-              <p className="text-xs text-muted-foreground">{customerEmail}</p>
-              {order.user?.phone && (
-                <p className="text-xs text-muted-foreground">{order.user.phone}</p>
-              )}
-            </CardContent>
-          </Card>
+        {/* ── SECTION 3: Vendor Address / Deliver To ─────────────── */}
+        {/* Header row */}
+        <div className="grid grid-cols-2 border-b border-[#d1d5db]">
+          <div className="px-5 py-[5px] border-r border-[#d1d5db] bg-[#f3f4f6]">
+            <p className="font-bold text-[12px]">Vendor Address</p>
+          </div>
+          <div className="px-5 py-[5px] bg-[#f3f4f6]">
+            <p className="font-bold text-[12px]">Deliver To</p>
+          </div>
+          
+        </div>
+        {/* Content row */}
+        <div className="grid grid-cols-2 border-b border-[#d1d5db]">
+          {/* Left: Customer as vendor */}
+          
+          
+          <div className="px-5 py-3 border-r border-[#d1d5db] leading-[1.6] text-[11px]">
+            <p className="font-bold text-[12px]">{COMPANY.name}</p>
+            <p>{COMPANY.formerly}</p>
+            <p>Dispatched From: {COMPANY.dispatch}</p>
+            <p>FSSAI NO: {COMPANY.fssai}</p>
+            <p>GSTIN {COMPANY.gstin}</p>
+            <p className="mt-1">UNIT NAME: {COMPANY.unit}</p>
+            
+          </div>
+          {/* Right: Shipping / deliver-to */}
+          <div className="px-5 py-3  leading-[1.6] text-[11px]">
+            <p className="font-bold text-[12px]">{customerName}</p>
+            {customerEmail && <p>{customerEmail}</p>}
+            {customerPhone && <p>{customerPhone}</p>}
+            {order.billing_address && addrBlock(order.billing_address).slice(1).map((l, i) => (
+              <p key={i}>{l}</p>
+            ))}
+            {deliverLines.length > 0 && (
+              <>
+                <p className="mt-2 font-semibold">Delivery Address:</p>
+                {deliverLines.map((l, i) => <p key={i}>{l}</p>)}
+              </>
+            )}
+          </div>
+        </div>
 
-          {/* Payment */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-muted-foreground" /> Payment
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Status</span>
-                <Badge className={`border-0 text-xs ${paymentColors[order.payment_status]}`}>
-                  {order.payment_status}
-                </Badge>
+        {/* ── SECTION 4: Items Table ──────────────────────────────── */}
+        <table className="w-full border-collapse text-[11px]">
+          <thead>
+            <tr style={{ backgroundColor: "#4b5563", color: "#fff" }}>
+              <th className="border border-[#6b7280] px-2 py-[6px] text-center font-semibold w-7">#</th>
+              <th className="border border-[#6b7280] px-2 py-[6px] text-left font-semibold">Item &amp; Description</th>
+              <th className="border border-[#6b7280] px-2 py-[6px] text-center font-semibold">HSN/SAC</th>
+              <th className="border border-[#6b7280] px-2 py-[6px] text-center font-semibold">Qty</th>
+              <th className="border border-[#6b7280] px-2 py-[6px] text-right font-semibold">Rate</th>
+              <th className="border border-[#6b7280] px-2 py-[6px] text-center font-semibold">CGST</th>
+              <th className="border border-[#6b7280] px-2 py-[6px] text-center font-semibold">SGST</th>
+              <th className="border border-[#6b7280] px-2 py-[6px] text-right font-semibold">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {order.order_items.map((item, idx) => {
+              const lineAmt = Number(item.price) * item.quantity;
+              const cgstRate = item.intra_state_tax_rate ?? 0;
+              const sgstRate = item.intra_state_tax_rate ?? 0;
+              return (
+                <tr key={item.id} style={{ backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f9fafb" }}>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">{idx + 1}</td>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px]">
+                    <span style={{ color: "#2563eb" }} className="font-medium">{item.name}</span>
+                    {item.variant_info && <span className="text-gray-500 ml-1">({item.variant_info})</span>}
+                  </td>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">{item.hsn_or_sac ?? "—"}</td>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">
+                    {item.quantity}.000
+                    {item.zoho_unit && <><br /><span className="text-gray-500">{item.zoho_unit}</span></>}
+                  </td>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-right font-mono">{fmt(Number(item.price))}</td>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">{cgstRate}%</td>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">{sgstRate}%</td>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-right font-mono">{fmt(lineAmt)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {/* ── SECTION 5: Footer — Items total / Tax / Signature ───── */}
+        <div className="flex border-t border-[#d1d5db]">
+          {/* Left: Items in Total + Notes + Signature */}
+          <div className="flex-1 px-5 py-3 border-r border-[#d1d5db]">
+            <p className="font-semibold text-[11px]">Items in Total {totalQty}.000</p>
+            {order.notes && (
+              <p className="text-[11px] text-gray-600 mt-1">{order.notes}</p>
+            )}
+            {/* Authorized Signature */}
+            <div className="mt-10">
+              <div className="border-t border-[#9ca3af] w-44 pt-1">
+                <p className="text-[10px] text-gray-500">Authorized Signature</p>
               </div>
-              {order.payment_method && (
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Method</span>
-                  <span className="text-xs font-medium capitalize">{order.payment_method}</span>
+            </div>
+          </div>
+
+          {/* Right: Tax breakdown + Total */}
+          <div className="w-[280px] shrink-0">
+            {/* Sub Total */}
+            <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
+              <span>Sub Total</span>
+              <span className="font-mono">{fmt(Number(order.subtotal))}</span>
+            </div>
+
+            {/* Tax rows — zero-rate rows */}
+            {Array.from(taxGroups.entries()).map(([rate, amounts]) => (
+              <React.Fragment key={rate}>
+                <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
+                  <span>CGST{rate > 0 ? rate : 0} ({rate}%)</span>
+                  <span className="font-mono">{fmt(amounts.cgst)}</span>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
+                  <span>SGST{rate > 0 ? rate : 0} ({rate}%)</span>
+                  <span className="font-mono">{fmt(amounts.sgst)}</span>
+                </div>
+              </React.Fragment>
+            ))}
 
-          {/* Status timeline */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" /> Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {STATUS_FLOW.filter(s => s !== "cancelled").map((s, i) => {
-                  const idx = STATUS_FLOW.indexOf(order.status);
-                  const thisIdx = STATUS_FLOW.indexOf(s);
-                  const done = order.status !== "cancelled" && thisIdx <= idx;
-                  const current = s === order.status;
-                  return (
-                    <div key={s} className="flex items-center gap-2">
-                      <div className={`h-2 w-2 rounded-full shrink-0 ${done ? "bg-primary" : "bg-muted-foreground/25"}`} />
-                      <span className={`text-xs capitalize ${current ? "font-semibold text-primary" : done ? "text-foreground" : "text-muted-foreground"}`}>
-                        {s}
-                      </span>
-                      {current && <Badge className="border-0 bg-primary/10 text-primary text-[10px] ml-auto">Current</Badge>}
-                    </div>
-                  );
-                })}
-                {order.status === "cancelled" && (
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full shrink-0 bg-red-400" />
-                    <span className="text-xs font-semibold text-red-600">Cancelled</span>
-                  </div>
-                )}
+            {/* Discount */}
+            {Number(order.discount) > 0 && (
+              <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
+                <span>Discount</span>
+                <span className="font-mono text-green-700">−{fmt(Number(order.discount))}</span>
               </div>
-            </CardContent>
-          </Card>
+            )}
 
-          {/* Addresses */}
-          {(order.shipping_address ?? order.billing_address) && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-muted-foreground" /> Addresses
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <AddressBlock label="Shipping Address" address={order.shipping_address} />
-                {order.billing_address && (
-                  <>
-                    <Separator />
-                    <AddressBlock label="Billing Address" address={order.billing_address} />
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          )}
+            {/* Shipping */}
+            {Number(order.shipping_cost) > 0 && (
+              <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
+                <span>Shipping</span>
+                <span className="font-mono">{fmt(Number(order.shipping_cost))}</span>
+              </div>
+            )}
+
+            {/* Total */}
+            <div className="flex justify-between px-4 py-[6px] text-[13px] font-bold">
+              <span>Total</span>
+              <span className="font-mono">₹{fmt(Number(order.total))}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── SECTION 6: Document footer ─────────────────────────── */}
+        <div className="border-t border-[#d1d5db] bg-[#f9fafb] px-5 py-2 text-center text-[10px] text-gray-500">
+          Corp Add: {COMPANY.address} &nbsp;|&nbsp; Company ID :: {COMPANY.cin}
         </div>
       </div>
-    </div>
+    </>
   );
 }

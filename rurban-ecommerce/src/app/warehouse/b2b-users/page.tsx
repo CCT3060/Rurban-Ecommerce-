@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   UserPlus, Search, Download, Loader2, Trash2, MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -45,19 +45,10 @@ function downloadCsv(users: B2BUser[]) {
 }
 
 export default function WarehouseB2BUsersPage() {
+  const router = useRouter();
   const [users, setUsers] = useState<B2BUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-
-  // Add user dialog
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  // Delete confirmation
   const [deleteUser, setDeleteUser] = useState<B2BUser | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -86,28 +77,6 @@ export default function WarehouseB2BUsersPage() {
         (u.phone ?? "").includes(q)
     );
   }, [users, search]);
-
-  const handleAdd = async () => {
-    if (!email || !password) { toast.error("Email and password are required"); return; }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/warehouse/customers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: name, email, phone, password }),
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to create user");
-      toast.success("B2B user created");
-      setOpen(false);
-      setName(""); setEmail(""); setPhone(""); setPassword("");
-      await fetchUsers();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create user");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleDelete = async () => {
     if (!deleteUser) return;
@@ -138,7 +107,7 @@ export default function WarehouseB2BUsersPage() {
           <Button variant="outline" className="gap-2" onClick={() => downloadCsv(users)} disabled={users.length === 0}>
             <Download className="h-4 w-4" /> Export CSV
           </Button>
-          <Button className="gap-2" onClick={() => setOpen(true)}>
+          <Button className="gap-2" onClick={() => router.push("/warehouse/b2b-users/new")}>
             <UserPlus className="h-4 w-4" /> Add B2B User
           </Button>
         </div>
@@ -218,39 +187,6 @@ export default function WarehouseB2BUsersPage() {
           </Table>
         </CardContent>
       </Card>
-
-      {/* Add User Dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add B2B User</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="wh-b2b-name">Full Name</Label>
-              <Input id="wh-b2b-name" placeholder="e.g. Raj Kumar" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="wh-b2b-email">Email <span className="text-destructive">*</span></Label>
-              <Input id="wh-b2b-email" type="email" placeholder="user@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="wh-b2b-phone">Phone</Label>
-              <Input id="wh-b2b-phone" placeholder="+91 98765 43210" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="wh-b2b-password">Password <span className="text-destructive">*</span></Label>
-              <Input id="wh-b2b-password" type="password" placeholder="Min 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={() => void handleAdd()} disabled={saving} className="gap-2">
-              {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</> : "Create User"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteUser} onOpenChange={(v) => { if (!v) setDeleteUser(null); }}>

@@ -208,14 +208,18 @@ export default function AdminProductsPage() {
                 onChange={(e) => handleSearchChange(e.target.value)}
               />
             </div>
-            <Select value={categoryFilter} onValueChange={(v) => v && handleFilter("category", v)}>
+            <Select
+              value={categoryFilter}
+              onValueChange={(v) => v && handleFilter("category", v)}
+              items={{ all: "All Categories", ...Object.fromEntries(categories.map((c) => [c.id, c.name])) }}
+            >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="All Categories" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
                 {categories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                  <SelectItem key={cat.id} value={cat.id} label={cat.name}>{cat.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

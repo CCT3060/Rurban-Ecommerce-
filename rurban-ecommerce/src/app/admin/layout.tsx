@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Package, FolderTree, ImageIcon, TicketPercent,
   ShoppingCart, Users, Star, Settings, Megaphone,
   Menu, PanelLeftClose, PanelLeft,
-  Warehouse, BookOpen, Tag, LogOut, Home, UserCheck,
+  Warehouse, BookOpen, Tag, LogOut, Home, UserCheck, ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -54,6 +54,7 @@ const sidebarGroups = [
     label: "System",
     items: [
       { label: "Warehouses", href: "/admin/warehouses", icon: Warehouse },
+      { label: "Lookup Masters", href: "/admin/masters", icon: ListChecks },
       { label: "Zoho Books", href: "/admin/zoho", icon: BookOpen },
       { label: "Settings", href: "/admin/settings", icon: Settings },
     ],
@@ -142,7 +143,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </Button>
         </div>
 
-        <ScrollArea className="flex-1 py-4">
+        <ScrollArea className="h-[calc(100vh-3.5rem)] py-4">
           <SidebarNav collapsed={collapsed} />
         </ScrollArea>
       </aside>

@@ -27,6 +27,7 @@ interface CreateWarehouseBody {
   name?: string;
   code?: string;
   location?: string | null;
+  state?: string | null;
   manager_name?: string | null;
   manager_email?: string | null;
   is_active?: boolean;
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
     name,
     code,
     location: body.location?.trim() || null,
+    state: body.state?.trim() || null,
     manager_name: body.manager_name?.trim() || null,
     manager_email: body.manager_email?.trim() || null,
     is_active: body.is_active ?? true,

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Building2, LayoutDashboard, Package, FolderTree, ShoppingCart, Home, LogOut, Tag, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const navItems = [
   { label: "Dashboard", href: "/warehouse", icon: LayoutDashboard },
@@ -28,28 +29,30 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-muted/30 flex">
       <aside className="hidden lg:flex w-64 flex-col border-r bg-card">
-        <div className="h-16 flex items-center gap-2 border-b px-4">
+        <div className="h-16 flex items-center gap-2 border-b px-4 shrink-0">
           <Building2 className="h-5 w-5 text-primary" />
           <p className="font-semibold">Warehouse Panel</p>
         </div>
-        <nav className="p-3 space-y-1">
-          {navItems.map((item) => {
-            const active = pathname === item.href || (item.href !== "/warehouse" && pathname.startsWith(item.href));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                }`}
-              >
-                <item.icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="mt-auto border-t p-3 space-y-1">
+        <ScrollArea className="flex-1">
+          <nav className="p-3 space-y-1">
+            {navItems.map((item) => {
+              const active = pathname === item.href || (item.href !== "/warehouse" && pathname.startsWith(item.href));
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  }`}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </ScrollArea>
+        <div className="border-t p-3 space-y-1 shrink-0">
           <Link href="/">
             <Button variant="ghost" className="w-full justify-start gap-2">
               <Home className="h-4 w-4" /> View Store

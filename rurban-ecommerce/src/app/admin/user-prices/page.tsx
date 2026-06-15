@@ -680,13 +680,17 @@ export default function AdminUserPricesPage() {
               <>
                 <div className="space-y-1.5">
                   <Label>Customer *</Label>
-                  <Select value={formUserId} onValueChange={(v) => setFormUserId(v ?? "")}>
+                  <Select
+                    value={formUserId}
+                    onValueChange={(v) => setFormUserId(v ?? "")}
+                    items={Object.fromEntries(customers.map((c) => [c.id, c.full_name ? `${c.full_name} (${c.email})` : c.email]))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a customer..." />
                     </SelectTrigger>
                     <SelectContent className="max-h-[220px]">
                       {customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
+                        <SelectItem key={c.id} value={c.id} label={c.full_name ? `${c.full_name} (${c.email})` : c.email}>
                           {c.full_name ? `${c.full_name} (${c.email})` : c.email}
                         </SelectItem>
                       ))}

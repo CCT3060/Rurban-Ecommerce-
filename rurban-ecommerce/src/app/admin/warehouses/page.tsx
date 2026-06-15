@@ -10,11 +10,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
+type LookupValue = { id: string; value: string };
+
+function useLookup(type: string) {
+  const [items, setItems] = useState<string[]>([]);
+  useEffect(() => {
+    fetch(`/api/admin/masters/${type}`)
+      .then((r) => r.json() as Promise<{ data?: LookupValue[] }>)
+      .then((j) => setItems((j.data ?? []).map((d) => d.value)))
+      .catch(() => { /* silently use empty list */ });
+  }, [type]);
+  return items;
+}
+
 type WarehouseRow = {
   id: string;
   name: string;
   code: string;
   location: string | null;
+  state: string | null;
   manager_name: string | null;
   manager_email: string | null;
   is_active: boolean;
@@ -31,9 +45,13 @@ export default function AdminWarehousesPage() {
     name: "",
     code: "",
     location: "",
+    state: "",
     manager_name: "",
     manager_email: "",
   });
+
+  const states = useLookup("indian_state");
+  const stateItems = Object.fromEntries(states.map((s) => [s, s]));
 
   const [adminForm, setAdminForm] = useState({
     warehouse_id: "",
@@ -94,7 +112,7 @@ export default function AdminWarehousesPage() {
       const json = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(json.error || "Failed to create warehouse");
       toast.success("Warehouse created");
-      setWarehouseForm({ name: "", code: "", location: "", manager_name: "", manager_email: "" });
+      setWarehouseForm({ name: "", code: "", location: "", state: "", manager_name: "", manager_email: "" });
       await fetchWarehouses();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create warehouse");
@@ -161,6 +179,23 @@ export default function AdminWarehousesPage() {
                 <Label>Location</Label>
                 <Input value={warehouseForm.location} onChange={(e) => setWarehouseForm((p) => ({ ...p, location: e.target.value }))} />
               </div>
+              <div className="space-y-2">
+                <Label>State</Label>
+                <Select
+                  value={warehouseForm.state}
+                  onValueChange={(val) => setWarehouseForm((p) => ({ ...p, state: val ?? "" }))}
+                  items={stateItems}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select state" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[200px]">
+                    {states.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Manager Name</Label>
@@ -187,11 +222,12 @@ export default function AdminWarehousesPage() {
                 <Select
                   value={adminForm.warehouse_id}
                   onValueChange={(value) => setAdminForm((prev) => ({ ...prev, warehouse_id: value || "" }))}
+                  items={Object.fromEntries(warehouses.map((w) => [w.id, w.name]))}
                 >
                   <SelectTrigger><SelectValue placeholder="Select warehouse" /></SelectTrigger>
                   <SelectContent>
                     {warehouses.map((warehouse) => (
-                      <SelectItem key={warehouse.id} value={warehouse.id}>{warehouse.name}</SelectItem>
+                      <SelectItem key={warehouse.id} value={warehouse.id} label={warehouse.name}>{warehouse.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -229,7 +265,10 @@ export default function AdminWarehousesPage() {
                 <div key={warehouse.id} className="rounded-lg border p-3 flex items-center justify-between gap-3">
                   <div>
                     <p className="font-medium">{warehouse.name} <span className="text-xs text-muted-foreground">({warehouse.code})</span></p>
-                    <p className="text-xs text-muted-foreground">{warehouse.location || "No location"} · {warehouse.manager_name || "No manager"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {[warehouse.location, warehouse.state].filter(Boolean).join(", ") || "No location"}
+                      {" · "}{warehouse.manager_name || "No manager"}
+                    </p>
                   </div>
                   <Badge className={warehouse.is_active ? "bg-green-100 text-green-700 border-0" : "bg-gray-100 text-gray-700 border-0"}>
                     {warehouse.is_active ? "Active" : "Inactive"}

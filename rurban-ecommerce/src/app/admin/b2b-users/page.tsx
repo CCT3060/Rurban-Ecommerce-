@@ -131,7 +131,7 @@ export default function AdminB2BUsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">B2B Users</h1>
+          <h1 className="text-2xl font-bold">B2B Coustomer</h1>
           <p className="text-sm text-muted-foreground">{users.length} B2B accounts</p>
         </div>
         <div className="flex items-center gap-2">

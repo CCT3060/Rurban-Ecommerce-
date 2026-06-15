@@ -40,7 +40,7 @@ const sidebarGroups = [
     items: [
       { label: "Orders", href: "/admin/orders", icon: ShoppingCart },
       { label: "Customers", href: "/admin/customers", icon: Users },
-      { label: "B2B Users", href: "/admin/b2b-users", icon: UserCheck },
+      { label: "Customer", href: "/admin/b2b-users", icon: UserCheck },
       { label: "User Prices", href: "/admin/user-prices", icon: Tag },
     ],
   },

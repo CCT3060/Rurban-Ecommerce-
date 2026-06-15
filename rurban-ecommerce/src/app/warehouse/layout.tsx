@@ -11,7 +11,7 @@ const navItems = [
   { label: "Categories", href: "/warehouse/categories", icon: FolderTree },
   { label: "Products", href: "/warehouse/products", icon: Package },
   { label: "Orders", href: "/warehouse/orders", icon: ShoppingCart },
-  { label: "B2B Users", href: "/warehouse/b2b-users", icon: UserCheck },
+  { label: "Customer", href: "/warehouse/b2b-users", icon: UserCheck },
   { label: "User Prices", href: "/warehouse/user-prices", icon: Tag },
 ];
 

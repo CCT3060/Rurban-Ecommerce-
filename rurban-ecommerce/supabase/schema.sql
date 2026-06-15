@@ -23,6 +23,7 @@ create table public.warehouses (
   name text not null,
   code text not null unique,
   location text,
+  state text,
   manager_name text,
   manager_email text,
   is_active boolean not null default true,

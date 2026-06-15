@@ -14,10 +14,14 @@ function mapWarehouseSchemaError(errorMessage: string) {
     message.includes("warehouse_id") &&
     (message.includes("profiles") || message.includes("products") || message.includes("categories"));
 
-  if (missingWarehousesTable || missingWarehouseColumn) {
+  const missingStateColumn =
+    message.includes("could not find the 'state' column") ||
+    (message.includes("column") && message.includes("state") && message.includes("warehouses"));
+
+  if (missingWarehousesTable || missingWarehouseColumn || missingStateColumn) {
     return {
       message:
-        "Warehouse schema is not migrated yet. Run supabase/migrations/20260420_warehouse_support.sql in Supabase SQL Editor first.",
+        "Warehouse schema is not fully migrated. Please run all warehouse-related migrations in Supabase SQL Editor (20260420_warehouse_support.sql, 20260612_warehouse_state.sql, and 20260612_lookup_values.sql).",
     };
   }
   return null;

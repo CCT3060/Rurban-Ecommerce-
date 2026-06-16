@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Pencil, Trash2, Plus, ChevronDown, ChevronRight,
-  Download, UserPlus, Upload, Loader2,
+  Download, UserPlus, Upload, Loader2, MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { formatPrice } from "@/lib/constants";
@@ -85,6 +88,8 @@ export default function WarehouseUserPricesPage() {
   // Delete
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [bulkDeletingByUser, setBulkDeletingByUser] = useState<Record<string, boolean>>({});
+  const [selectedPriceIdsByUser, setSelectedPriceIdsByUser] = useState<Record<string, string[]>>({});
 
   // Import
   const [importModal, setImportModal] = useState(false);
@@ -308,6 +313,59 @@ export default function WarehouseUserPricesPage() {
     }
   };
 
+  const getSelectedIdsForUser = (userId: string) => selectedPriceIdsByUser[userId] ?? [];
+
+  const toggleSelectedPrice = (userId: string, priceId: string, checked: boolean) => {
+    setSelectedPriceIdsByUser((prev) => {
+      const selected = new Set(prev[userId] ?? []);
+      if (checked) selected.add(priceId);
+      else selected.delete(priceId);
+      return { ...prev, [userId]: Array.from(selected) };
+    });
+  };
+
+  const selectAllForUser = (userId: string, ids: string[]) => {
+    setSelectedPriceIdsByUser((prev) => ({ ...prev, [userId]: ids }));
+  };
+
+  const clearSelectionForUser = (userId: string) => {
+    setSelectedPriceIdsByUser((prev) => ({ ...prev, [userId]: [] }));
+  };
+
+  const deleteSelectedForUser = async (userId: string) => {
+    const ids = getSelectedIdsForUser(userId);
+    if (ids.length === 0) {
+      toast.info("No prices selected");
+      return;
+    }
+
+    if (!window.confirm(`Delete ${ids.length} selected custom prices?`)) return;
+
+    setBulkDeletingByUser((prev) => ({ ...prev, [userId]: true }));
+    try {
+      const results = await Promise.all(
+        ids.map(async (id) => {
+          const res = await fetch(`/api/warehouse/user-prices/${id}`, { method: "DELETE" });
+          const json = (await res.json()) as { error?: string };
+          return { ok: res.ok, error: json.error };
+        })
+      );
+
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length > 0) {
+        throw new Error(failed[0].error ?? "Some records could not be deleted");
+      }
+
+      toast.success(`${ids.length} price record${ids.length === 1 ? "" : "s"} deleted`);
+      clearSelectionForUser(userId);
+      await fetchRecords();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bulk delete failed");
+    } finally {
+      setBulkDeletingByUser((prev) => ({ ...prev, [userId]: false }));
+    }
+  };
+
   const handleAddUser = async () => {
     setAddUserSaving(true);
     try {
@@ -484,6 +542,11 @@ export default function WarehouseUserPricesPage() {
           {userGroups.map((group) => {
             const expanded = expandedUsers.has(group.userId);
             const u = group.user;
+            const selectedIds = getSelectedIdsForUser(group.userId);
+            const allRecordIds = group.records.map((r) => r.id);
+            const allSelected = allRecordIds.length > 0 && allRecordIds.every((id) => selectedIds.includes(id));
+            const someSelected = selectedIds.length > 0;
+            const isBulkDeleting = !!bulkDeletingByUser[group.userId];
             return (
               <Card key={group.userId} className="overflow-hidden">
                 <div className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors">
@@ -550,6 +613,29 @@ export default function WarehouseUserPricesPage() {
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-md hover:bg-accent"
+                      title="More actions"
+                    >
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => selectAllForUser(group.userId, allRecordIds)}>
+                        Select all prices
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => clearSelectionForUser(group.userId)} disabled={!someSelected}>
+                        Clear selection
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        disabled={!someSelected || isBulkDeleting}
+                        onClick={() => void deleteSelectedForUser(group.userId)}
+                      >
+                        {isBulkDeleting ? "Deleting..." : `Delete selected (${selectedIds.length})`}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
                 {expanded && (
@@ -568,6 +654,17 @@ export default function WarehouseUserPricesPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead className="w-10">
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) selectAllForUser(group.userId, allRecordIds);
+                                  else clearSelectionForUser(group.userId);
+                                }}
+                                aria-label="Select all prices"
+                              />
+                            </TableHead>
                             <TableHead>Product</TableHead>
                             <TableHead>SKU</TableHead>
                             <TableHead>Category</TableHead>
@@ -584,8 +681,17 @@ export default function WarehouseUserPricesPage() {
                           {group.records.map((r) => {
                             const base = r.product?.sale_price ?? r.product?.price ?? 0;
                             const saving = base - r.custom_price;
+                            const checked = selectedIds.includes(r.id);
                             return (
                               <TableRow key={r.id}>
+                                <TableCell>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => toggleSelectedPrice(group.userId, r.id, e.target.checked)}
+                                    aria-label={`Select ${r.product?.name ?? "price row"}`}
+                                  />
+                                </TableCell>
                                 <TableCell className="font-medium text-sm max-w-[200px] truncate">
                                   {r.product?.name ?? "—"}
                                 </TableCell>

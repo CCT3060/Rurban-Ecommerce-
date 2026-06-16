@@ -40,3 +40,27 @@ export async function GET() {
     },
   });
 }
+
+export async function PUT(request: Request) {
+  const auth = await requireWarehouseAdminContext();
+  if (!auth.ok) return auth.response;
+
+  const body = (await request.json()) as { full_name?: string | null; phone?: string | null };
+  const payload: Record<string, unknown> = {};
+  if (body.full_name !== undefined) payload.full_name = body.full_name;
+  if (body.phone !== undefined) payload.phone = body.phone;
+
+  if (Object.keys(payload).length === 0) {
+    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+  }
+
+  const admin = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin
+    .from("profiles")
+    .update(payload as unknown as never) as any)
+    .eq("id", auth.context.userId);
+
+  if (error) return NextResponse.json({ error: (error as { message: string }).message }, { status: 400 });
+  return NextResponse.json({ success: true });
+}

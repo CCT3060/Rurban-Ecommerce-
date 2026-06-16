@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, LayoutDashboard, Package, FolderTree, ShoppingCart, Home, LogOut, Tag, UserCheck } from "lucide-react";
+import { Building2, LayoutDashboard, Package, FolderTree, ShoppingCart, Home, LogOut, Tag, UserCheck, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -17,6 +18,32 @@ const navItems = [
 
 export default function WarehouseLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [profile, setProfile] = useState<{
+    full_name: string | null;
+    email: string | null;
+    phone: string | null;
+    warehouse_name: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch("/api/warehouse/me", { cache: "no-store" });
+        if (!response.ok) return;
+        const json = (await response.json()) as {
+          data?: {
+            full_name: string | null;
+            email: string | null;
+            phone: string | null;
+            warehouse_name: string | null;
+          };
+        };
+        setProfile(json.data ?? null);
+      } catch {
+        // ignore profile card errors to avoid blocking the layout
+      }
+    })();
+  }, []);
 
   const handleSignOut = () => {
     const form = document.createElement("form");
@@ -52,6 +79,23 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
             })}
           </nav>
         </ScrollArea>
+        <div className="border-t p-3 space-y-3 shrink-0">
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Logged in as</p>
+            <p className="mt-1 text-sm font-semibold truncate">{profile?.full_name?.trim() || "Warehouse Admin"}</p>
+            <p className="text-xs text-muted-foreground truncate">{profile?.warehouse_name || "Assigned warehouse"}</p>
+            <div className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+              <p className="flex items-center gap-1.5 truncate">
+                <Mail className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{profile?.email || "-"}</span>
+              </p>
+              <p className="flex items-center gap-1.5 truncate">
+                <Phone className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{profile?.phone || "Not set"}</span>
+              </p>
+            </div>
+          </div>
+        </div>
         <div className="border-t p-3 space-y-1 shrink-0">
           <Link href="/">
             <Button variant="ghost" className="w-full justify-start gap-2">

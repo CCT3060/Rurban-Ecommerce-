@@ -25,6 +25,19 @@ export async function GET(request: Request) {
 
   const ids = (data ?? []).map((row) => row.id);
   const { data: orders } = await admin.from("orders").select("user_id,total").in("user_id", ids);
+  const { data: details } = ids.length > 0
+    ? await admin
+      .from("b2b_customer_details")
+      .select(
+        "user_id, display_name, customer_number, company_name, contact_name, payment_terms, gst_treatment, gstin, billing_attention, billing_address, billing_street2, billing_city, billing_state, billing_country, billing_county, billing_phone, shipping_attention, shipping_address, shipping_street2, shipping_city, shipping_state, shipping_country, shipping_code, shipping_phone"
+      )
+      .in("user_id", ids)
+    : { data: [] as Array<Record<string, unknown>> };
+
+  const { data: userPrices } = ids.length > 0
+    ? await admin.from("user_product_prices").select("user_id,status").in("user_id", ids)
+    : { data: [] as Array<{ user_id: string; status: string }> };
+
   const metrics = new Map<string, { orders: number; spent: number }>();
   for (const id of ids) metrics.set(id, { orders: 0, spent: 0 });
   for (const row of orders ?? []) {
@@ -34,7 +47,24 @@ export async function GET(request: Request) {
     metric.spent += Number(row.total ?? 0);
   }
 
-  const merged = (data ?? []).map((row) => ({ ...row, orders_count: metrics.get(row.id)?.orders ?? 0, spent_total: metrics.get(row.id)?.spent ?? 0 }));
+  const detailsByUser = new Map((details ?? []).map((d) => [d.user_id as string, d]));
+  const priceCountByUser = new Map<string, { active: number; inactive: number }>();
+  for (const id of ids) priceCountByUser.set(id, { active: 0, inactive: 0 });
+  for (const row of userPrices ?? []) {
+    const metric = priceCountByUser.get(row.user_id as string);
+    if (!metric) continue;
+    if (row.status === "inactive") metric.inactive += 1;
+    else metric.active += 1;
+  }
+
+  const merged = (data ?? []).map((row) => ({
+    ...row,
+    details: detailsByUser.get(row.id) ?? null,
+    orders_count: metrics.get(row.id)?.orders ?? 0,
+    spent_total: metrics.get(row.id)?.spent ?? 0,
+    active_price_count: priceCountByUser.get(row.id)?.active ?? 0,
+    inactive_price_count: priceCountByUser.get(row.id)?.inactive ?? 0,
+  }));
   return NextResponse.json({ data: merged });
 }
 

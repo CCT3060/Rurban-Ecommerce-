@@ -10,14 +10,58 @@ export async function GET() {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("profiles")
-    .select("id, full_name, email, phone")
+    .select("id, full_name, email, phone, is_active, created_at")
     .eq("role", "user")
     .eq("user_type", "b2b")
     .eq("warehouse_id", auth.context.warehouseId!)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ data: data ?? [] });
+
+  const userIds = (data ?? []).map((u) => u.id);
+  let detailsByUser = new Map<string, Record<string, unknown>>();
+  let priceCountByUser = new Map<string, { active: number; inactive: number }>();
+
+  if (userIds.length > 0) {
+    const { data: details } = await admin
+      .from("b2b_customer_details")
+      .select(
+        "user_id, display_name, customer_number, company_name, contact_name, payment_terms, gst_treatment, gstin, billing_city, billing_state, shipping_city, shipping_state"
+      )
+      .in("user_id", userIds);
+
+    detailsByUser = new Map((details ?? []).map((d) => [d.user_id as string, d as Record<string, unknown>]));
+
+    const { data: prices } = await admin
+      .from("user_product_prices")
+      .select("user_id, status")
+      .in("user_id", userIds);
+
+    for (const uid of userIds) {
+      priceCountByUser.set(uid, { active: 0, inactive: 0 });
+    }
+
+    for (const row of prices ?? []) {
+      const uid = row.user_id as string;
+      const bucket = priceCountByUser.get(uid);
+      if (!bucket) continue;
+      if (row.status === "inactive") bucket.inactive += 1;
+      else bucket.active += 1;
+    }
+  }
+
+  const merged = (data ?? []).map((row) => {
+    const details = detailsByUser.get(row.id) ?? null;
+    const priceCounts = priceCountByUser.get(row.id) ?? { active: 0, inactive: 0 };
+    return {
+      ...row,
+      details,
+      active_price_count: priceCounts.active,
+      inactive_price_count: priceCounts.inactive,
+    };
+  });
+
+  return NextResponse.json({ data: merged });
 }
 
 // ─── POST /api/warehouse/customers ───────────────────────────────────────────

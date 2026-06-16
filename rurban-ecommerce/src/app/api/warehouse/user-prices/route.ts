@@ -37,6 +37,22 @@ export async function GET(request: Request) {
 
   const admin = createAdminClient();
 
+  const { data: warehouseUsers, error: warehouseUsersError } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("role", "user")
+    .eq("user_type", "b2b")
+    .eq("warehouse_id", auth.context.warehouseId!);
+
+  if (warehouseUsersError) {
+    return NextResponse.json({ error: warehouseUsersError.message }, { status: 400 });
+  }
+
+  const warehouseUserIds = (warehouseUsers ?? []).map((u) => u.id);
+  if (warehouseUserIds.length === 0) {
+    return NextResponse.json({ data: [], total: 0 });
+  }
+
   let query = admin
     .from("user_product_prices")
     .select(
@@ -48,6 +64,8 @@ export async function GET(request: Request) {
     )
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
+
+  query = query.in("user_id", warehouseUserIds);
 
   if (userId) query = query.eq("user_id", userId);
   if (productId) query = query.eq("product_id", productId);
@@ -108,10 +126,16 @@ export async function POST(request: Request) {
 
   const { data: user, error: userError } = await admin
     .from("profiles")
-    .select("id, role")
+    .select("id, role, user_type, warehouse_id")
     .eq("id", userId)
     .maybeSingle();
   if (userError || !user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+  if (user.role !== "user" || user.user_type !== "b2b") {
+    return NextResponse.json({ error: "Selected user is not a B2B customer" }, { status: 400 });
+  }
+  if (user.warehouse_id !== auth.context.warehouseId) {
+    return NextResponse.json({ error: "User does not belong to your warehouse" }, { status: 403 });
+  }
 
   const { data: product, error: productError } = await admin
     .from("products")

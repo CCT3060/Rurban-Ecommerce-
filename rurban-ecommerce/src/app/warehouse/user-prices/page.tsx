@@ -506,9 +506,14 @@ export default function WarehouseUserPricesPage() {
                         <span className="ml-2 text-xs text-muted-foreground">· {u.phone}</span>
                       )}
                     </div>
-                    <Badge variant="secondary" className="shrink-0">
-                      {group.records.length} price{group.records.length !== 1 ? "s" : ""}
-                    </Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge className="bg-green-100 text-green-700 border-0">
+                        {group.records.filter((r) => r.status === "active").length} active
+                      </Badge>
+                      <Badge className="bg-gray-100 text-gray-700 border-0">
+                        {group.records.filter((r) => r.status === "inactive").length} inactive
+                      </Badge>
+                    </div>
                   </button>
                   <Button
                     variant="ghost"

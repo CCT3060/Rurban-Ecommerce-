@@ -17,16 +17,21 @@ export default async function AccountPage() {
     redirect("/login?redirectTo=/account");
   }
 
-  const [{ data: profile }, { count: orderCount }] = await Promise.all([
+  const [{ data: profile }, { count: orderCount }, { data: customerDetails }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("full_name,email,phone")
+      .select("full_name,email,phone,user_type")
       .eq("id", user.id)
       .maybeSingle(),
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id),
+    supabase
+      .from("b2b_customer_details")
+      .select("display_name,customer_number,company_name,contact_name,payment_terms,gst_treatment,gstin,billing_attention,billing_address,billing_street2,billing_city,billing_state,billing_country,billing_county,billing_phone,shipping_attention,shipping_address,shipping_street2,shipping_city,shipping_state,shipping_country,shipping_code,shipping_phone")
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
 
   return (
@@ -62,6 +67,45 @@ export default async function AccountPage() {
             </p>
           </CardContent>
         </Card>
+
+        {profile?.user_type === "b2b" && customerDetails && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Customer Details</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm">
+              <div className="space-y-1">
+                <p><span className="text-muted-foreground">Display Name:</span> {customerDetails.display_name || "-"}</p>
+                <p><span className="text-muted-foreground">Customer #:</span> {customerDetails.customer_number || "-"}</p>
+                <p><span className="text-muted-foreground">Company:</span> {customerDetails.company_name || "-"}</p>
+                <p><span className="text-muted-foreground">Contact:</span> {customerDetails.contact_name || "-"}</p>
+                <p><span className="text-muted-foreground">Payment Terms:</span> {customerDetails.payment_terms || "-"}</p>
+                <p><span className="text-muted-foreground">GST Treatment:</span> {customerDetails.gst_treatment || "-"}</p>
+                <p><span className="text-muted-foreground">GSTIN:</span> {customerDetails.gstin || "-"}</p>
+              </div>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <p className="text-xs uppercase text-muted-foreground">Billing Address</p>
+                  <p>{customerDetails.billing_attention || "-"}</p>
+                  <p>{customerDetails.billing_address || "-"}</p>
+                  <p>{customerDetails.billing_street2 || "-"}</p>
+                  <p>{customerDetails.billing_city || "-"}, {customerDetails.billing_state || "-"}</p>
+                  <p>{customerDetails.billing_country || "-"} {customerDetails.billing_county || ""}</p>
+                  <p>{customerDetails.billing_phone || "-"}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs uppercase text-muted-foreground">Shipping Address</p>
+                  <p>{customerDetails.shipping_attention || "-"}</p>
+                  <p>{customerDetails.shipping_address || "-"}</p>
+                  <p>{customerDetails.shipping_street2 || "-"}</p>
+                  <p>{customerDetails.shipping_city || "-"}, {customerDetails.shipping_state || "-"}</p>
+                  <p>{customerDetails.shipping_country || "-"} {customerDetails.shipping_code || ""}</p>
+                  <p>{customerDetails.shipping_phone || "-"}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>

@@ -1,0 +1,11 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /warehouse/
+Disallow: /checkout/
+Disallow: /order-success/
+Disallow: /api/
+Disallow: /onboarding/
+
+Allow: /
+
+Sitemap: https://yourdomain.com/sitemap.xml

@@ -21,6 +21,7 @@ interface CheckoutBody {
     zip?: string;
   };
   paymentMethod?: string;
+  couponCode?: string;
   notes?: string;
 }
 
@@ -246,9 +247,40 @@ export async function POST(request: Request) {
 
   subtotal = Number(subtotal.toFixed(2));
 
+  // ── Server-side coupon validation ─────────────────────────────────────────
+  let couponDiscountAmount = 0;
+  let couponId: string | null = null;
+  const couponCodeInput = body.couponCode ? String(body.couponCode).trim().toUpperCase() : null;
+
+  if (couponCodeInput) {
+    const { data: coupon } = await admin
+      .from("coupons")
+      .select("id, discount_type, discount_value, min_order_value, max_uses, used_count, expiry_date, status")
+      .eq("code", couponCodeInput)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (coupon) {
+      const now = new Date();
+      const notExpired = !coupon.expiry_date || new Date(coupon.expiry_date) >= now;
+      const underUsageLimit = coupon.max_uses === null || Number(coupon.used_count) < Number(coupon.max_uses);
+      const meetsMinimum = !coupon.min_order_value || subtotal >= Number(coupon.min_order_value);
+
+      if (notExpired && underUsageLimit && meetsMinimum) {
+        couponDiscountAmount =
+          coupon.discount_type === "percentage"
+            ? Number((subtotal * (Number(coupon.discount_value) / 100)).toFixed(2))
+            : Math.min(Number(coupon.discount_value), subtotal);
+        couponId = coupon.id as string;
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const shippingCost = subtotal >= 999 ? 0 : 49;
-  const tax = Number((subtotal * 0.18).toFixed(2));
-  const total = Number((subtotal + shippingCost + tax).toFixed(2));
+  const taxableAmount = Math.max(0, subtotal - couponDiscountAmount);
+  const tax = Number((taxableAmount * 0.18).toFixed(2));
+  const total = Number((taxableAmount + shippingCost + tax).toFixed(2));
 
   const orderNumber = generateOrderNumber();
 
@@ -269,13 +301,14 @@ export async function POST(request: Request) {
       user_id: user.id,
       order_number: orderNumber,
       subtotal,
-      discount: 0,
+      discount: couponDiscountAmount,
       tax,
       shipping_cost: shippingCost,
       total,
       status: "pending",
       payment_status: "pending",
       payment_method: paymentMethod,
+      coupon_id: couponId,
       shipping_address: shippingAddress,
       billing_address: shippingAddress,
       notes: body.notes?.trim() || null,
@@ -297,6 +330,35 @@ export async function POST(request: Request) {
     await admin.from("orders").delete().eq("id", order.id);
     return NextResponse.json({ error: itemsError.message }, { status: 400 });
   }
+
+  // ── Atomic stock decrement ────────────────────────────────────────────────
+  // Decrement product/variant stock. Uses >= check to prevent negative stock
+  // in race conditions (two requests passing the initial stock check simultaneously).
+  for (const item of lineRequests) {
+    const variant = item.variantId ? variantMap.get(item.variantId) : null;
+    if (variant) {
+      // Decrement variant stock
+      await admin
+        .from("product_variants")
+        .update({ stock: (variantMap.get(item.variantId!)!.stock - item.quantity) })
+        .eq("id", item.variantId!)
+        .gte("stock", item.quantity);
+    } else {
+      // Decrement product stock
+      const product = productMap.get(item.productId)!;
+      await admin
+        .from("products")
+        .update({ stock: Number(product.stock) - item.quantity })
+        .eq("id", item.productId)
+        .gte("stock", item.quantity);
+    }
+  }
+
+  // Increment coupon usage count
+  if (couponId) {
+    await admin.rpc("increment_coupon_used_count" as never, { coupon_id: couponId } as never);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   return NextResponse.json({ data: { id: order.id, order_number: order.order_number } }, { status: 201 });
 }

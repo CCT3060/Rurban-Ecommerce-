@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,16 +9,18 @@ import {
   ActivityIndicator,
   RefreshControl,
   FlatList,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../lib/theme';
 import { API_BASE } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import { useNavbar } from '../context/NavbarContext';
 
-type CatalogueProduct = {
+export type CatalogueProduct = {
   id: string;
   name: string;
   slug: string;
@@ -33,30 +35,42 @@ type CatalogueProduct = {
   image_url: string | null;
 };
 
-type CatalogueCategory = {
+export type CatalogueCategory = {
   id: string;
   name: string;
   slug: string;
   products: CatalogueProduct[];
 };
 
-function B2BProductCard({ item }: { item: CatalogueProduct }) {
+export function B2BProductCard({ item }: { item: CatalogueProduct }) {
   const navigation = useNavigation<any>();
-  const { addItem, getQty, removeItem } = useCart();
+  const { addItem, getQty, removeItem, setQty } = useCart();
   const qty = getQty(item.id);
-  const isOutOfStock = item.stock <= 0;
+  const [inputVal, setInputVal] = useState(String(qty));
+
+  // Keep input in sync when qty changes externally
+  React.useEffect(() => { setInputVal(String(qty)); }, [qty]);
 
   const productForCart = {
     id: item.id,
     name: item.name,
     slug: item.slug,
     price: item.price,
-    sale_price: item.custom_price, // use custom price as sale price
-    stock: item.stock,
+    sale_price: item.custom_price ?? item.sale_price ?? item.price,
+    stock: 99999, // B2B: always allow ordering regardless of stock
     images: item.image_url ? [{ id: '0', image_url: item.image_url, is_primary: true }] : [],
     is_featured: false,
     is_trending: false,
     is_new_arrival: false,
+  };
+
+  const commitInput = () => {
+    const n = parseInt(inputVal, 10);
+    if (!isNaN(n) && n >= 0) {
+      setQty(item.id, n, productForCart);
+    } else {
+      setInputVal(String(qty));
+    }
   };
 
   return (
@@ -73,19 +87,14 @@ function B2BProductCard({ item }: { item: CatalogueProduct }) {
               <Ionicons name="cube-outline" size={36} color={COLORS.grayLight} />
             </View>
           )}
-          {isOutOfStock && (
-            <View style={card.outOfStockBadge}>
-              <Text style={card.outOfStockText}>Out of Stock</Text>
-            </View>
-          )}
         </View>
         <View style={card.info}>
           <Text style={card.name} numberOfLines={3}>{item.name}</Text>
           {item.brand ? <Text style={card.brand}>{item.brand}</Text> : null}
           <View style={card.priceRow}>
-            <Text style={card.customPrice}>₹{item.custom_price.toFixed(2)}</Text>
+            <Text style={card.customPrice}>₹{(item.custom_price ?? item.sale_price ?? item.price).toFixed(2)}</Text>
           </View>
-          {item.price > item.custom_price && (
+          {item.price > (item.custom_price ?? item.sale_price ?? item.price) && (
             <Text style={card.mrp}>MRP {item.price.toFixed(2)}</Text>
           )}
           {item.avg_rating > 0 && (
@@ -103,24 +112,31 @@ function B2BProductCard({ item }: { item: CatalogueProduct }) {
       <View style={card.cartRow}>
         {qty === 0 ? (
           <TouchableOpacity
-            style={[card.addBtn, isOutOfStock && card.addBtnDisabled]}
-            onPress={() => !isOutOfStock && addItem(productForCart)}
-            disabled={isOutOfStock}
+            style={card.addBtn}
+            onPress={() => { addItem(productForCart); setInputVal('1'); }}
           >
-            <Text style={card.addBtnText}>{isOutOfStock ? 'Out of Stock' : 'Add'}</Text>
+            <Text style={card.addBtnText}>Add</Text>
           </TouchableOpacity>
         ) : (
           <View style={card.qtyRow}>
             <TouchableOpacity style={card.qtyBtn} onPress={() => removeItem(item.id)}>
               <Ionicons name="remove" size={16} color={COLORS.primary} />
             </TouchableOpacity>
-            <Text style={card.qtyText}>{qty}</Text>
+            <TextInput
+              style={card.qtyInput}
+              value={inputVal}
+              onChangeText={setInputVal}
+              onBlur={commitInput}
+              onSubmitEditing={commitInput}
+              keyboardType="number-pad"
+              returnKeyType="done"
+              selectTextOnFocus
+            />
             <TouchableOpacity
-              style={[card.qtyBtn, qty >= item.stock && card.qtyBtnDisabled]}
-              onPress={() => qty < item.stock && addItem(productForCart)}
-              disabled={qty >= item.stock}
+              style={card.qtyBtn}
+              onPress={() => addItem(productForCart)}
             >
-              <Ionicons name="add" size={16} color={qty >= item.stock ? COLORS.grayLight : COLORS.primary} />
+              <Ionicons name="add" size={16} color={COLORS.primary} />
             </TouchableOpacity>
           </View>
         )}
@@ -131,10 +147,52 @@ function B2BProductCard({ item }: { item: CatalogueProduct }) {
 
 export default function B2BCatalogueScreen() {
   const { token } = useAuth();
+  const { totalQty } = useCart();
+  const { setNavVisible } = useNavbar();
+  const lastScrollY = useRef(0);
   const [categories, setCategories] = useState<CatalogueCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
+
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const hits: CatalogueProduct[] = [];
+    for (const cat of categories) {
+      for (const p of cat.products) {
+        if (
+          p.name.toLowerCase().includes(q) ||
+          (p.brand && p.brand.toLowerCase().includes(q)) ||
+          (p.sku && p.sku.toLowerCase().includes(q))
+        ) {
+          hits.push(p);
+        }
+      }
+    }
+    return hits;
+  }, [searchQuery, categories]);
+
+  // Reset navbar when leaving this screen
+  useFocusEffect(
+    useCallback(() => {
+      return () => setNavVisible(true);
+    }, [setNavVisible])
+  );
+
+  const handleScroll = useCallback((event: any) => {
+    const currentY = event.nativeEvent.contentOffset.y;
+    const diff = currentY - lastScrollY.current;
+    if (diff > 8 && currentY > 50) {
+      setNavVisible(false);
+    } else if (diff < -8 || currentY <= 50) {
+      setNavVisible(true);
+    }
+    lastScrollY.current = currentY;
+  }, [setNavVisible]);
 
   const fetchCatalogue = useCallback(async () => {
     try {
@@ -191,51 +249,109 @@ export default function B2BCatalogueScreen() {
     <SafeAreaView style={styles.root} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Catalogue</Text>
-        <Text style={styles.headerSub}>Your exclusive prices</Text>
+        {isSearching ? (
+          <View style={styles.searchBar}>
+            <TouchableOpacity
+              onPress={() => { setIsSearching(false); setSearchQuery(''); }}
+              style={{ padding: 4 }}
+            >
+              <Ionicons name="arrow-back" size={20} color="#111827" />
+            </TouchableOpacity>
+            <TextInput
+              ref={searchInputRef}
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search all products..."
+              placeholderTextColor="#9CA3AF"
+              autoFocus
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+                <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={styles.headerTitle}>My Catalogue</Text>
+              <Text style={styles.headerSub}>Your exclusive prices</Text>
+            </View>
+            <TouchableOpacity onPress={() => setIsSearching(true)} style={styles.searchIconBtn}>
+              <Ionicons name="search" size={22} color="#111827" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       <View style={styles.body}>
-        {/* Category sidebar */}
-        <ScrollView
-          style={styles.sidebar}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.sidebarContent}
-        >
-          {categories.map((cat) => (
-            <TouchableOpacity
-              key={cat.id}
-              style={[styles.catItem, activeCategoryId === cat.id && styles.catItemActive]}
-              onPress={() => setActiveCategoryId(cat.id)}
+        {isSearching && searchQuery.trim().length > 0 ? (
+          /* ── Search results (full width, no sidebar) ── */
+          <FlatList
+            key="search-results"
+            style={styles.productList}
+            data={searchResults}
+            keyExtractor={(item) => item.id}
+            numColumns={2}
+            columnWrapperStyle={styles.row}
+            contentContainerStyle={[styles.listContent, totalQty > 0 && styles.listContentWithCart]}
+            renderItem={({ item }) => <B2BProductCard item={item} />}
+            ListEmptyComponent={
+              <View style={[styles.centered, { paddingTop: 48 }]}>
+                <Ionicons name="search-outline" size={52} color="#D1D5DB" />
+                <Text style={styles.emptyTitle}>No results</Text>
+                <Text style={styles.emptySubtitle}>No products match "{searchQuery}"</Text>
+              </View>
+            }
+          />
+        ) : (
+          <>
+            {/* Category sidebar */}
+            <ScrollView
+              style={styles.sidebar}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.sidebarContent}
             >
-              <Text
-                style={[styles.catName, activeCategoryId === cat.id && styles.catNameActive]}
-                numberOfLines={2}
-              >
-                {cat.name}
-              </Text>
-              <Text style={styles.catCount}>{cat.products.length}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+              {categories.map((cat) => (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[styles.catItem, activeCategoryId === cat.id && styles.catItemActive]}
+                  onPress={() => setActiveCategoryId(cat.id)}
+                >
+                  <Text
+                    style={[styles.catName, activeCategoryId === cat.id && styles.catNameActive]}
+                    numberOfLines={2}
+                  >
+                    {cat.name}
+                  </Text>
+                  <Text style={styles.catCount}>{cat.products.length}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
-        {/* Products grid */}
-        <FlatList
-          key="b2b-products"
-          style={styles.productList}
-          data={activeCategory?.products ?? []}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.row}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          renderItem={({ item }) => <B2BProductCard item={item} />}
-          ListEmptyComponent={
-            <View style={styles.centered}>
-              <Text style={styles.emptySubtitle}>No products in this category.</Text>
-            </View>
-          }
-        />
+            {/* Products grid */}
+            <FlatList
+              key="b2b-products"
+              style={styles.productList}
+              data={activeCategory?.products ?? []}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              columnWrapperStyle={styles.row}
+              contentContainerStyle={[styles.listContent, totalQty > 0 && styles.listContentWithCart]}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+              renderItem={({ item }) => <B2BProductCard item={item} />}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              ListEmptyComponent={
+                <View style={styles.centered}>
+                  <Text style={styles.emptySubtitle}>No products in this category.</Text>
+                </View>
+              }
+            />
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -253,6 +369,14 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#111827' },
   headerSub: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  searchIconBtn: { padding: 8, borderRadius: 8, backgroundColor: '#F3F4F6' },
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#F3F4F6', borderRadius: 12,
+    paddingHorizontal: 10, gap: 6,
+  },
+  searchInput: { flex: 1, fontSize: 15, color: '#111827', paddingVertical: 9 },
   body: { flex: 1, flexDirection: 'row' },
   sidebar: {
     maxWidth:100,
@@ -277,6 +401,7 @@ const styles = StyleSheet.create({
   catCount: { fontSize: 9, color: '#9CA3AF', marginTop: 1 },
   productList: { flex: 1 },
   listContent: { padding: 6 },
+  listContentWithCart: { paddingBottom: 90 },
   row: { justifyContent: 'space-between', paddingHorizontal: 2 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#374151', marginTop: 16 },
   emptySubtitle: { fontSize: 14, color: '#6B7280', marginTop: 8, textAlign: 'center', lineHeight: 20 },
@@ -337,5 +462,16 @@ const card = StyleSheet.create({
   },
   qtyBtn: { padding: 6, alignItems: 'center', justifyContent: 'center', flex: 1 },
   qtyBtnDisabled: { opacity: 0.4 },
-  qtyText: { fontSize: 13, fontWeight: '800', color: '#111827', flex: 1, textAlign: 'center' },
+  qtyInput: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#111827',
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 4,
+    minWidth: 36,
+  },
 });

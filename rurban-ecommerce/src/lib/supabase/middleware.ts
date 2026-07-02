@@ -48,10 +48,9 @@ export async function updateSession(request: NextRequest) {
   let metadataRole: string | null = null;
 
   if (user) {
-    metadataRole =
-      (user.app_metadata?.role as string | undefined) ??
-      (user.user_metadata?.role as string | undefined) ??
-      null;
+    // Only trust app_metadata — it is set by service role only.
+    // user_metadata is user-controlled and must NOT be trusted for role checks.
+    metadataRole = (user.app_metadata?.role as string | undefined) ?? null;
 
     try {
       const { data: profile } = await supabase
@@ -150,7 +149,10 @@ export async function updateSession(request: NextRequest) {
     }
     const canWarehouseAdminUploadProducts =
       isWarehouseProductUploadRoute && isWarehouseAdminRole;
-    if (!isAdminRole && !canWarehouseAdminUploadProducts) {
+    // Warehouse admins may call the zoho-post endpoint (it does its own role check)
+    const canWarehouseAdminPostToZoho =
+      isWarehouseAdminRole && /^\/api\/admin\/orders\/[^/]+\/zoho-post$/.test(pathname);
+    if (!isAdminRole && !canWarehouseAdminUploadProducts && !canWarehouseAdminPostToZoho) {
       return forbiddenResponse();
     }
   }

@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/zoho-sync",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/warehouse-stock-sync",
+      "schedule": "0 0 * * *"
     }
   ]
 }

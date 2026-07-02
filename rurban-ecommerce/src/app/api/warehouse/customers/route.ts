@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireWarehouseAdminContext } from "@/lib/auth/request-context";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { syncContactToZoho, sendWelcomeEmail, buildCustomerLink } from "@/lib/b2b-customer";
 
 // ─── GET /api/warehouse/customers ────────────────────────────────────────────
 export async function GET() {
@@ -26,7 +27,7 @@ export async function GET() {
     const { data: details } = await admin
       .from("b2b_customer_details")
       .select(
-        "user_id, display_name, customer_number, company_name, contact_name, payment_terms, gst_treatment, gstin, billing_city, billing_state, shipping_city, shipping_state"
+        "user_id, display_name, customer_number, company_name, contact_name, payment_terms, gst_treatment, gstin, billing_city, billing_state, shipping_city, shipping_state, zoho_contact_id"
       )
       .in("user_id", userIds);
 
@@ -126,17 +127,49 @@ export async function POST(request: Request) {
 
   const userId = authData.user.id;
 
-  // Tag user with the warehouse and mark as B2B
+  // Tag user with the warehouse and mark as B2B.
+  // Retry once to handle the rare timing gap between GoTrue committing the auth
+  // user and the on_auth_user_created trigger inserting the profile row.
+  const profilePayload = {
+    full_name: full_name || null,
+    phone,
+    warehouse_id: auth.context.warehouseId,
+    user_type: "b2b",
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin
+  let { error: profileError, count: profileCount } = await (admin
     .from("profiles")
-    .update({
-      full_name: full_name || null,
-      phone,
-      warehouse_id: auth.context.warehouseId,
-      user_type: "b2b",
-    } as unknown as never) as any)
+    .update(profilePayload as unknown as never, { count: "exact" }) as any)
     .eq("id", userId);
+
+  if (!profileError && (profileCount ?? 0) === 0) {
+    // Profile row not yet created by trigger — wait briefly and retry.
+    await new Promise((r) => setTimeout(r, 400));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ({ error: profileError, count: profileCount } = await (admin
+      .from("profiles")
+      .update(profilePayload as unknown as never, { count: "exact" }) as any)
+      .eq("id", userId));
+  }
+
+  if (profileError) {
+    console.error("[POST /api/warehouse/customers] Profile update failed:", profileError);
+    await admin.auth.admin.deleteUser(userId).catch(() => {});
+    return NextResponse.json(
+      { error: "Failed to configure user profile: " + profileError.message },
+      { status: 500 }
+    );
+  }
+
+  if ((profileCount ?? 0) === 0) {
+    console.error("[POST /api/warehouse/customers] Profile row missing after retry for user:", userId);
+    await admin.auth.admin.deleteUser(userId).catch(() => {});
+    return NextResponse.json(
+      { error: "User profile was not initialised. Please try again." },
+      { status: 500 }
+    );
+  }
 
   // Set app_metadata so user_type is available in the JWT without a DB query
   await admin.auth.admin.updateUserById(userId, {
@@ -174,5 +207,10 @@ export async function POST(request: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (admin.from("b2b_customer_details").insert(details as unknown as never) as any);
 
-  return NextResponse.json({ data: { id: userId, email, full_name } }, { status: 201 });
+  // Fire-and-forget: sync to Zoho Books and send welcome email
+  const detailsLink = buildCustomerLink(userId);
+  void syncContactToZoho(email, full_name, phone, details);
+  void sendWelcomeEmail(email, full_name, password, detailsLink, body.company_name?.trim() ?? null);
+
+  return NextResponse.json({ data: { id: userId, email, full_name, details_link: detailsLink } }, { status: 201 });
 }

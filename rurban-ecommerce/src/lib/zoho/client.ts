@@ -111,13 +111,41 @@ export async function zohoGet<T>(
       Authorization: `Zoho-oauthtoken ${token}`,
       "Content-Type": "application/json",
     },
-    // Next.js: don't cache; always fetch fresh data from Zoho
     cache: "no-store",
   });
 
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Zoho API error ${res.status} on ${path}: ${text}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+export async function zohoPost<T>(
+  path: string,
+  body: Record<string, unknown>
+): Promise<T> {
+  const orgId = process.env.ZOHO_ORG_ID;
+  if (!orgId) throw new Error("ZOHO_ORG_ID environment variable is not set.");
+
+  const token = await getAccessToken();
+  const url = new URL(`${ZOHO_API_BASE}${path}`);
+  url.searchParams.set("organization_id", orgId);
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Zoho-oauthtoken ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Zoho API error ${res.status} on POST ${path}: ${text}`);
   }
 
   return res.json() as Promise<T>;

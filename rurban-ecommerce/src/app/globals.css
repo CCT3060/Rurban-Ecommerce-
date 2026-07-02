@@ -135,11 +135,9 @@
   /* Hide screen-only toolbar */
   .no-print { display: none !important; }
 
-  /* Position PO document at top-left, full width */
+  /* Position PO document: let it flow naturally so content spans multiple pages */
   .po-document {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
+    position: static !important;
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;

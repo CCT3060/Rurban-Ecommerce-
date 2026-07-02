@@ -9,7 +9,13 @@ if (!supabaseUrl || !serviceRoleKey) {
 }
 
 const email = process.env.ADMIN_SEED_EMAIL || "admin@rurban.com";
-const password = process.env.ADMIN_SEED_PASSWORD || "Admin@12345";
+const password = process.env.ADMIN_SEED_PASSWORD;
+
+if (!password) {
+  console.error("ERROR: ADMIN_SEED_PASSWORD environment variable is required.");
+  console.error("Run: ADMIN_SEED_PASSWORD=<your-password> node --env-file=.env.local scripts/seed-admin.mjs");
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: {

@@ -1,24 +1,21 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { requireAdminContext } from "@/lib/auth/request-context";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-async function requireAdmin() {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  const role = (user.app_metadata?.role as string | undefined) ?? (user.user_metadata?.role as string | undefined);
-  if (role !== "admin") return { ok: false as const, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
-  return { ok: true as const };
-}
-
-export async function GET() {
-  const auth = await requireAdmin();
+export async function GET(request: Request) {
+  const auth = await requireAdminContext();
   if (!auth.ok) return auth.response;
+
+  const { searchParams } = new URL(request.url);
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+  const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") ?? "100", 10)));
+  const offset = (page - 1) * limit;
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error, count } = await admin
     .from("orders")
-    .select("*, user:profiles(full_name,email), items:order_items(id)")
-    .order("created_at", { ascending: false });
+    .select("*, user:profiles(full_name,email), items:order_items(id)", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ data: data ?? [] });
+  return NextResponse.json({ data: data ?? [], total: count ?? 0, page, limit });
 }

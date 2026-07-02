@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Copy } from "lucide-react";
+import { ArrowLeft, Loader2, Copy, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -49,6 +52,10 @@ const EMPTY: FormData = {
   shipping_code: "", shipping_phone: "",
 };
 
+// Defined at module scope so it's never recreated and always accessible
+const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
+
 function Field({ label, id, required, children }: {
   label: string; id?: string; required?: boolean; children: React.ReactNode;
 }) {
@@ -66,6 +73,7 @@ export default function WarehouseNewB2BUserPage() {
   const router = useRouter();
   const [form, setForm] = useState<FormData>(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [createdLink, setCreatedLink] = useState<string | null>(null);
 
   const states = useLookup("indian_state");
   const paymentTerms = useLookup("payment_term");
@@ -95,6 +103,9 @@ export default function WarehouseNewB2BUserPage() {
     e.preventDefault();
     if (!form.email || !form.password) { toast.error("Email and password are required"); return; }
     if (form.password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
+    if (form.gstin && !GSTIN_RE.test(form.gstin)) {
+      toast.warning("GSTIN format looks incorrect, but continuing anyway.");
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/warehouse/customers", {
@@ -102,10 +113,10 @@ export default function WarehouseNewB2BUserPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json()) as { error?: string; data?: { details_link?: string } };
       if (!res.ok) throw new Error(json.error ?? "Failed to create user");
       toast.success("B2B user created successfully");
-      router.push("/warehouse/b2b-users");
+      setCreatedLink(json.data?.details_link ?? null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create user");
     } finally {
@@ -118,9 +129,10 @@ export default function WarehouseNewB2BUserPage() {
   const paymentItems = Object.fromEntries(paymentTerms.map((p) => [p, p]));
 
   return (
-    <form onSubmit={(e) => void handleSubmit(e)} className="space-y-6 max-w-4xl">
-      {/* Header */}
-      <div className="flex items-center gap-3">
+    <>
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-6 max-w-4xl">
+        {/* Header */}
+        <div className="flex items-center gap-3">
         <Button type="button" variant="ghost" size="icon" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -182,8 +194,21 @@ export default function WarehouseNewB2BUserPage() {
             </Select>
           </Field>
           <Field label="GST Identification Number (GSTIN)" id="gstin">
-            <Input id="gstin" placeholder="27XXXXX0000X1ZX" value={form.gstin} onChange={set("gstin")} className="uppercase" />
+            <Input
+              id="gstin"
+              placeholder="27XXXXX0000X1ZX"
+              value={form.gstin}
+              onChange={(e) => {
+                const upper = (e.target as HTMLInputElement).value.toUpperCase();
+                setForm((p) => ({ ...p, gstin: upper }));
+              }}
+              className="uppercase"
+              maxLength={15}
+            />
           </Field>
+          {form.gstin !== "" && !GSTIN_RE.test(form.gstin) && (
+            <p className="text-sm text-red-500 -mt-2 col-span-full">⚠ Invalid GSTIN format (expected: 22AAAAA0000A1Z5)</p>
+          )}
           <Field label="Payment Terms" id="payment_terms">
             <Select value={form.payment_terms} onValueChange={setSelect("payment_terms")} items={paymentItems}>
               <SelectTrigger id="payment_terms" className="w-full">
@@ -304,5 +329,40 @@ export default function WarehouseNewB2BUserPage() {
         </Button>
       </div>
     </form>
+
+    {/* ── Success dialog: onboarding link ──────────────────── */}
+    <Dialog open={!!createdLink} onOpenChange={(v) => { if (!v) router.push("/warehouse/b2b-users"); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600" /> Customer Created!
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Share this link with the customer so they can fill in their business details:
+        </p>
+        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+          <span className="flex-1 text-xs truncate text-muted-foreground">{createdLink}</span>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="shrink-0"
+            onClick={() => {
+              void navigator.clipboard.writeText(createdLink ?? "").then(() => toast.success("Link copied!"));
+            }}
+          >
+            <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          A welcome email with this link has also been sent to the customer.
+        </p>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={() => setCreatedLink(null)}>Create Another</Button>
+          <Button onClick={() => router.push("/warehouse/b2b-users")}>Done</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

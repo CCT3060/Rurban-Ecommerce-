@@ -30,21 +30,26 @@ export async function getRequestContext() {
     .eq("id", user.id)
     .maybeSingle();
 
-  const metadataRole =
-    (user.app_metadata?.role as RequestRole | undefined) ??
-    (user.user_metadata?.role as RequestRole | undefined);
+  // Only trust app_metadata (set by service role / admin operations).
+  // NEVER fall back to user_metadata — it is user-controlled and can be spoofed.
+  const metadataRole = user.app_metadata?.role as RequestRole | undefined;
 
   const profileRole = profile?.role as RequestRole | undefined;
 
-  const trustedRole =
-    metadataRole === "admin" || metadataRole === "warehouse_admin"
-      ? metadataRole
-      : profileRole ?? metadataRole ?? "user";
+  // DB profile is the authoritative source; app_metadata is a trusted fallback.
+  const trustedRole = profileRole ?? metadataRole ?? "user";
+
+  // Prefer the DB profile value; fall back to app_metadata.warehouse_id which is
+  // set by the service role at creation time and cannot be spoofed by users.
+  const warehouseId =
+    (profile?.warehouse_id as string | null | undefined) ??
+    (user.app_metadata?.warehouse_id as string | null | undefined) ??
+    null;
 
   const context: RequestContext = {
     userId: user.id,
     role: trustedRole,
-    warehouseId: (profile?.warehouse_id as string | null | undefined) ?? null,
+    warehouseId,
   };
 
   return {

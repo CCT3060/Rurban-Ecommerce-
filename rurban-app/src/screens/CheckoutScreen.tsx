@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../lib/theme';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { placeOrder } from '../lib/api';
+import { placeOrder, API_BASE } from '../lib/api';
 
 type PayMethod = 'cod' | 'upi' | 'card';
 
@@ -21,7 +21,7 @@ const PAY_OPTS: { id: PayMethod; label: string; icon: string; sub: string }[] = 
 
 export default function CheckoutScreen({ navigation }: { navigation: any }) {
   const { items, totalPrice, clearCart } = useCart();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [firstName, setFirstName] = useState('');
@@ -33,9 +33,102 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
   const [zip,       setZip]       = useState('');
   const [payMethod, setPayMethod] = useState<PayMethod>('cod');
   const [loading,   setLoading]   = useState(false);
+  const [deliveryDate, setDeliveryDate] = useState<string | null>(null);
+  const [paymentTerms, setPaymentTerms] = useState<string | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
 
-  // Load saved address on mount
+  const MONTHS_FULL  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DAYS_SHORT   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const formatDateLabel = (iso: string) => {
+    const d = new Date(iso + 'T00:00:00');
+    return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+  };
+
+  const calendarRows = () => {
+    const { year, month } = calendarMonth;
+    const firstDow = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: (number | null)[] = [];
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+    const rows: (number | null)[][] = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+    return rows;
+  };
+
+  const todayMidnight = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+  const tomorrowMs = todayMidnight.getTime() + 86400000;
+  const isDayDisabled = (day: number) =>
+    new Date(calendarMonth.year, calendarMonth.month, day).getTime() < tomorrowMs;
+
+  const toIso = (day: number) => {
+    const m = String(calendarMonth.month + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    return `${calendarMonth.year}-${m}-${dd}`;
+  };
+
+  const canGoPrev = (() => {
+    const now = new Date();
+    return calendarMonth.year > now.getFullYear() || calendarMonth.month > now.getMonth();
+  })();
+
+  const goPrev = () => {
+    if (!canGoPrev) return;
+    setCalendarMonth(prev => {
+      const d = new Date(prev.year, prev.month - 1, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  };
+
+  const goNext = () => {
+    setCalendarMonth(prev => {
+      const d = new Date(prev.year, prev.month + 1, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  };
+
+  // For B2B users: fetch and pre-fill the registered shipping address
   useEffect(() => {
+    if (user?.user_type !== 'b2b' || !token) return;
+    fetch(`${API_BASE}/api/mobile/profile`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then((json: { data?: { full_name?: string; phone?: string; b2b_details?: { shipping_attention?: string; shipping_address?: string; shipping_street2?: string; shipping_city?: string; shipping_state?: string; shipping_code?: string; shipping_phone?: string; payment_terms?: string | null } | null } }) => {
+        const d = json.data;
+        if (!d) return;
+
+        // Split full_name into first / last
+        const nameParts = (d.full_name ?? '').trim().split(' ');
+        setFirstName(nameParts[0] ?? '');
+        setLastName(nameParts.slice(1).join(' '));
+
+        const det = d.b2b_details;
+        // Phone: prefer shipping_phone, fall back to profile phone
+        setPhone(det?.shipping_phone ?? d.phone ?? '');
+
+        if (det) {
+          const streetLine = [det.shipping_address, det.shipping_street2]
+            .filter(Boolean).join(', ');
+          if (streetLine) setStreet(streetLine);
+          if (det.shipping_city)  setCity(det.shipping_city);
+          if (det.shipping_state) setState(det.shipping_state);
+          if (det.shipping_code)  setZip(det.shipping_code);
+          if (det.payment_terms)  setPaymentTerms(det.payment_terms);
+        }
+      })
+      .catch(() => {});
+  }, [token, user?.user_type]);
+
+  // Load saved address on mount (for non-B2B users)
+  useEffect(() => {
+    if (user?.user_type === 'b2b') return;
     AsyncStorage.getItem('checkout_address').then(raw => {
       if (!raw) return;
       try {
@@ -49,7 +142,7 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
         if (saved.zip)       setZip(saved.zip);
       } catch (_) {}
     });
-  }, []);
+  }, [user?.user_type]);
 
   // Persist address whenever any field changes
   useEffect(() => {
@@ -66,16 +159,22 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
       Alert.alert('Incomplete Address', 'Please fill in all address fields.');
       return;
     }
+    if (user?.user_type === 'b2b' && !deliveryDate) {
+      Alert.alert('Delivery Date Required', 'Please select a requested delivery date.');
+      return;
+    }
     if (!token) {
       Alert.alert('Not logged in', 'Please log in to place an order.');
       return;
     }
 
     setLoading(true);
+    const notes = deliveryDate ? `Requested delivery date: ${formatDateLabel(deliveryDate)}` : undefined;
     const result = await placeOrder(token, {
       items: items.map(i => ({ productId: i.product.id, quantity: i.quantity })),
       shippingAddress: { firstName, lastName, phone, street, city, state, zip },
-      paymentMethod: payMethod,
+      paymentMethod: user?.user_type === 'b2b' ? (paymentTerms ?? 'b2b_terms') : payMethod,
+      notes,
     });
     setLoading(false);
 
@@ -162,29 +261,98 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
             </View>
           </View>
 
-          {/* ── Payment Method ── */}
+          {/* ── Requested Delivery Date (B2B only) ── */}
+          {user?.user_type === 'b2b' && (
+            <View style={s.section}>
+              <View style={s.sectionHeader}>
+                <Ionicons name="calendar-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
+                <Text style={s.sectionTitle}>Requested Delivery Date</Text>
+              </View>
+              {/* Month navigation */}
+              <View style={s.calHeader}>
+                <TouchableOpacity onPress={goPrev} disabled={!canGoPrev} style={s.calNavBtn}>
+                  <Ionicons name="chevron-back" size={22} color={canGoPrev ? COLORS.dark : COLORS.border} />
+                </TouchableOpacity>
+                <Text style={s.calMonthLabel}>{MONTHS_FULL[calendarMonth.month]} {calendarMonth.year}</Text>
+                <TouchableOpacity onPress={goNext} style={s.calNavBtn}>
+                  <Ionicons name="chevron-forward" size={22} color={COLORS.dark} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Day-of-week headers */}
+              <View style={s.calDayHeaders}>
+                {DAYS_SHORT.map(d => (
+                  <Text key={d} style={s.calDayHeader}>{d}</Text>
+                ))}
+              </View>
+
+              {/* Day grid */}
+              {calendarRows().map((row, ri) => (
+                <View key={ri} style={s.calRow}>
+                  {row.map((day, ci) => {
+                    if (!day) return <View key={ci} style={s.calCell} />;
+                    const iso = toIso(day);
+                    const selected = deliveryDate === iso;
+                    const disabled = isDayDisabled(day);
+                    return (
+                      <TouchableOpacity
+                        key={ci}
+                        style={[s.calCell, selected && s.calCellSelected, disabled && s.calCellDisabled]}
+                        onPress={() => !disabled && setDeliveryDate(iso)}
+                        activeOpacity={disabled ? 1 : 0.75}
+                        disabled={disabled}
+                      >
+                        <Text style={[s.calDayNum, selected && s.calDayNumSelected, disabled && s.calDayNumDisabled]}>
+                          {day}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+
+              {deliveryDate ? (
+                <Text style={s.selectedDateText}>Selected: {formatDateLabel(deliveryDate)}</Text>
+              ) : (
+                <Text style={s.dateHintText}>Tap a date to select</Text>
+              )}
+            </View>
+          )}
+
+          {/* ── Payment Terms / Method ── */}
           <View style={s.section}>
             <View style={s.sectionHeader}>
               <Ionicons name="card" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
-              <Text style={s.sectionTitle}>Payment Method</Text>
+              <Text style={s.sectionTitle}>{user?.user_type === 'b2b' ? 'Payment Terms' : 'Payment Method'}</Text>
             </View>
-            {PAY_OPTS.map(opt => (
-              <TouchableOpacity
-                key={opt.id}
-                style={[s.payOpt, payMethod === opt.id && s.payOptActive]}
-                onPress={() => setPayMethod(opt.id)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name={opt.icon as any} size={22} color={payMethod === opt.id ? COLORS.primary : COLORS.gray} style={{ marginRight: 12 }} />
+            {user?.user_type === 'b2b' ? (
+              <View style={s.payTermsCard}>
+                <Ionicons name="document-text-outline" size={22} color={COLORS.primary} style={{ marginRight: 12 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[s.payLabel, payMethod === opt.id && s.payLabelActive]}>{opt.label}</Text>
-                  <Text style={s.paySub}>{opt.sub}</Text>
+                  <Text style={s.payTermsValue}>{paymentTerms ?? 'As per agreement'}</Text>
+                  <Text style={s.payTermsSub}>Set by your account manager</Text>
                 </View>
-                <View style={[s.radio, payMethod === opt.id && s.radioActive]}>
-                  {payMethod === opt.id && <View style={s.radioDot} />}
-                </View>
-              </TouchableOpacity>
-            ))}
+                <Ionicons name="lock-closed-outline" size={16} color={COLORS.grayLight} />
+              </View>
+            ) : (
+              PAY_OPTS.map(opt => (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[s.payOpt, payMethod === opt.id && s.payOptActive]}
+                  onPress={() => setPayMethod(opt.id)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name={opt.icon as any} size={22} color={payMethod === opt.id ? COLORS.primary : COLORS.gray} style={{ marginRight: 12 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.payLabel, payMethod === opt.id && s.payLabelActive]}>{opt.label}</Text>
+                    <Text style={s.paySub}>{opt.sub}</Text>
+                  </View>
+                  <View style={[s.radio, payMethod === opt.id && s.radioActive]}>
+                    {payMethod === opt.id && <View style={s.radioDot} />}
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
 
           {/* ── Order Summary ── */}
@@ -302,4 +470,27 @@ const s = StyleSheet.create({
     paddingHorizontal: 24, paddingVertical: 14, alignItems: 'center',
   },
   orderBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  // ── Payment terms (B2B read-only) ──
+  payTermsCard: {
+    flexDirection: 'row', alignItems: 'center', borderWidth: 1.5,
+    borderColor: COLORS.primary, borderRadius: 14, padding: 14,
+    backgroundColor: COLORS.primaryLight,
+  },
+  payTermsValue: { fontSize: 15, fontWeight: '800', color: COLORS.primary },
+  payTermsSub: { fontSize: 12, color: COLORS.gray, marginTop: 2 },
+  // ── Calendar ──
+  calHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  calNavBtn: { padding: 6 },
+  calMonthLabel: { fontSize: 15, fontWeight: '800', color: COLORS.dark },
+  calDayHeaders: { flexDirection: 'row', marginBottom: 6 },
+  calDayHeader: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: COLORS.grayLight, paddingVertical: 4 },
+  calRow: { flexDirection: 'row', marginBottom: 4 },
+  calCell: { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, margin: 2 },
+  calCellSelected: { backgroundColor: COLORS.primary },
+  calCellDisabled: { opacity: 0.25 },
+  calDayNum: { fontSize: 14, fontWeight: '600', color: COLORS.dark },
+  calDayNumSelected: { color: '#fff', fontWeight: '800' },
+  calDayNumDisabled: { color: COLORS.grayLight },
+  selectedDateText: { fontSize: 13, fontWeight: '700', color: COLORS.primary, marginTop: 10 },
+  dateHintText: { fontSize: 12, color: COLORS.grayLight, marginTop: 10, textAlign: 'center' },
 });

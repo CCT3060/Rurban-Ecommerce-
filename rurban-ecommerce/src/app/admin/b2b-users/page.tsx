@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  UserPlus, Search, Download, MoreHorizontal, Ban, CheckCircle, Trash2, Loader2, Eye, Pencil,
+  UserPlus, Search, Download, MoreHorizontal, Ban, CheckCircle, Trash2, Loader2, Eye, Pencil, Link2, Copy, BookOpen, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +47,7 @@ type B2BDetails = {
   shipping_country?: string | null;
   shipping_code?: string | null;
   shipping_phone?: string | null;
+  zoho_contact_id?: string | null;
 };
 
 type B2BUser = {
@@ -127,7 +127,6 @@ function toEditForm(user: B2BUser): EditForm {
 }
 
 export default function AdminB2BUsersPage() {
-  const router = useRouter();
   const [users, setUsers] = useState<B2BUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -135,18 +134,84 @@ export default function AdminB2BUsersPage() {
   const [editUser, setEditUser] = useState<B2BUser | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
-
   const [deleteUser, setDeleteUser] = useState<B2BUser | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [zohoSyncing, setZohoSyncing] = useState<string | null>(null); // userId being synced
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const zohoAbortRef = useRef<AbortController | null>(null);
+
+  const syncToZoho = async (userId: string) => {
+    // Cancel any in-flight sync before starting a new one
+    zohoAbortRef.current?.abort();
+    const controller = new AbortController();
+    zohoAbortRef.current = controller;
+
+    setZohoSyncing(userId);
+    const endpoint = `/api/admin/customers/${userId}/zoho-sync`;
+    console.log("[syncToZoho] ➜ POST", endpoint, { userId });
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        signal: controller.signal,
+      });
+      const json = (await res.json()) as { error?: string; zohoContactId?: string };
+
+      if (!res.ok) {
+        console.error("[syncToZoho] ✗ HTTP", res.status, json.error ?? "Zoho sync failed");
+        throw new Error(json.error ?? "Zoho sync failed");
+      }
+
+      console.log("[syncToZoho] ✓ Success — Zoho customer_id stored:", json.zohoContactId ?? null);
+      toast.success(`Synced to Zoho Books${json.zohoContactId ? ` (ID: ${json.zohoContactId})` : ""}`);
+      await fetchUsers();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        console.log("[syncToZoho] ↩ Request cancelled");
+        return;
+      }
+      console.error("[syncToZoho] ✗ Error", err);
+      toast.error(err instanceof Error ? err.message : "Zoho sync failed");
+    } finally {
+      setZohoSyncing(null);
+    }
+  };
+
+  const generateInviteLink = async () => {
+    setInviteLoading(true);
+    console.log("[generateInviteLink] ➜ GET /api/admin/b2b-invite");
+    try {
+      const res = await fetch("/api/admin/b2b-invite");
+      const json = (await res.json()) as { link?: string; error?: string };
+      if (!res.ok) {
+        console.error("[generateInviteLink] ✗ HTTP", res.status, json.error ?? "Failed to generate link");
+        throw new Error(json.error ?? "Failed to generate link");
+      }
+      console.log("[generateInviteLink] ✓ Success", { link: json.link });
+      setInviteLink(json.link ?? null);
+    } catch (err) {
+      console.error("[generateInviteLink] ✗ Error", err);
+      toast.error(err instanceof Error ? err.message : "Failed to generate link");
+    } finally {
+      setInviteLoading(false);
+    }
+  };
 
   const fetchUsers = async () => {
+    console.log("[fetchUsers] ➜ GET /api/admin/customers?user_type=b2b");
     try {
       setLoading(true);
       const res = await fetch("/api/admin/customers?user_type=b2b", { cache: "no-store" });
       const json = (await res.json()) as { data?: B2BUser[]; error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to load users");
+      if (!res.ok) {
+        console.error("[fetchUsers] ✗ HTTP", res.status, json.error ?? "Failed to load users");
+        throw new Error(json.error ?? "Failed to load users");
+      }
+      console.log("[fetchUsers] ✓ Success", { count: json.data?.length ?? 0 });
       setUsers(json.data ?? []);
     } catch (err) {
+      console.error("[fetchUsers] ✗ Error", err);
       toast.error(err instanceof Error ? err.message : "Failed to load users");
     } finally {
       setLoading(false);
@@ -166,6 +231,7 @@ export default function AdminB2BUsersPage() {
   }, [users, search]);
 
   const toggleActive = async (id: string, isActive: boolean) => {
+    console.log("[toggleActive] ➜ PUT", `/api/admin/customers/${id}`, { is_active: isActive });
     try {
       const res = await fetch(`/api/admin/customers/${id}`, {
         method: "PUT",
@@ -173,16 +239,67 @@ export default function AdminB2BUsersPage() {
         body: JSON.stringify({ is_active: isActive }),
       });
       const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to update user");
+      if (!res.ok) {
+        console.error("[toggleActive] ✗ HTTP", res.status, json.error ?? "Failed to update user");
+        throw new Error(json.error ?? "Failed to update user");
+      }
+      console.log("[toggleActive] ✓ Success", { id, is_active: isActive });
       toast.success("User status updated");
       await fetchUsers();
     } catch (err) {
+      console.error("[toggleActive] ✗ Error", err);
       toast.error(err instanceof Error ? err.message : "Failed to update user");
     }
   };
 
   const handleEditSave = async () => {
     if (!editUser || !editForm) return;
+    setSavingEdit(true);
+    console.log("[handleEditSave] ➜ PUT", `/api/admin/customers/${editUser.id}`, { ...editForm });
+    try {
+      const res = await fetch(`/api/admin/customers/${editUser.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: editForm.full_name || null,
+          phone: editForm.phone || null,
+          is_active: editForm.is_active === "active",
+          display_name: editForm.display_name || null,
+          customer_number: editForm.customer_number || null,
+          company_name: editForm.company_name || null,
+          contact_name: editForm.contact_name || null,
+          payment_terms: editForm.payment_terms || null,
+          gst_treatment: editForm.gst_treatment || null,
+          gstin: editForm.gstin || null,
+          billing_city: editForm.billing_city || null,
+          billing_state: editForm.billing_state || null,
+          billing_phone: editForm.billing_phone || null,
+          shipping_city: editForm.shipping_city || null,
+          shipping_state: editForm.shipping_state || null,
+          shipping_phone: editForm.shipping_phone || null,
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        console.error("[handleEditSave] ✗ HTTP", res.status, json.error ?? "Failed to update customer");
+        throw new Error(json.error ?? "Failed to update customer");
+      }
+      console.log("[handleEditSave] ✓ Success", { id: editUser.id });
+      toast.success("Customer updated");
+      setEditUser(null);
+      setEditForm(null);
+      await fetchUsers();
+    } catch (err) {
+      console.error("[handleEditSave] ✗ Error", err);
+      toast.error(err instanceof Error ? err.message : "Failed to update customer");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleEditSaveAndSync = async () => {
+    if (!editUser || !editForm) return;
+    // Save first, then sync to Zoho
     setSavingEdit(true);
     try {
       const res = await fetch(`/api/admin/customers/${editUser.id}`, {
@@ -209,28 +326,38 @@ export default function AdminB2BUsersPage() {
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Failed to update customer");
-      toast.success("Customer updated");
+      toast.success("Customer saved — syncing to Zoho Books…");
       setEditUser(null);
       setEditForm(null);
       await fetchUsers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update customer");
-    } finally {
       setSavingEdit(false);
+      return;
     }
+    setSavingEdit(false);
+    // Now sync the freshly-saved data to Zoho
+    const userId = editUser.id;
+    await syncToZoho(userId);
   };
 
   const handleDelete = async () => {
     if (!deleteUser) return;
     setDeleting(true);
+    console.log("[handleDelete] ➜ DELETE", `/api/admin/customers/${deleteUser.id}`, { id: deleteUser.id });
     try {
       const res = await fetch(`/api/admin/customers/${deleteUser.id}`, { method: "DELETE" });
       const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Failed to delete user");
+      if (!res.ok) {
+        console.error("[handleDelete] ✗ HTTP", res.status, json.error ?? "Failed to delete user");
+        throw new Error(json.error ?? "Failed to delete user");
+      }
+      console.log("[handleDelete] ✓ Success", { id: deleteUser.id });
       toast.success(`${deleteUser.full_name ?? deleteUser.email} deleted`);
       setDeleteUser(null);
       await fetchUsers();
     } catch (err) {
+      console.error("[handleDelete] ✗ Error", err);
       toast.error(err instanceof Error ? err.message : "Failed to delete user");
     } finally {
       setDeleting(false);
@@ -248,8 +375,8 @@ export default function AdminB2BUsersPage() {
           <Button variant="outline" className="gap-2" onClick={() => downloadCsv(users)} disabled={users.length === 0}>
             <Download className="h-4 w-4" /> Export CSV
           </Button>
-          <Button className="gap-2" onClick={() => router.push("/admin/b2b-users/new")}>
-            <UserPlus className="h-4 w-4" /> Add B2B User
+          <Button className="gap-2" onClick={() => void generateInviteLink()} disabled={inviteLoading}>
+            {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Add B2B User
           </Button>
         </div>
       </div>
@@ -276,6 +403,7 @@ export default function AdminB2BUsersPage() {
                 <TableHead className="text-center">Orders</TableHead>
                 <TableHead className="text-right">Total Spent</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Zoho</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead className="w-12" />
               </TableRow>
@@ -316,6 +444,22 @@ export default function AdminB2BUsersPage() {
                   <TableCell>
                     <Badge className={u.is_active ? "bg-green-100 text-green-700 border-0" : "bg-gray-100 text-gray-700 border-0"}>{u.is_active ? "active" : "inactive"}</Badge>
                   </TableCell>
+                  <TableCell>
+                    {u.details?.zoho_contact_id ? (
+                      <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">Synced</Badge>
+                    ) : (
+                      <button
+                        className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 disabled:opacity-50"
+                        disabled={zohoSyncing === u.id}
+                        onClick={() => void syncToZoho(u.id)}
+                      >
+                        {zohoSyncing === u.id
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <BookOpen className="h-3.5 w-3.5" />}
+                        Add to Zoho
+                      </button>
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{new Date(u.created_at).toLocaleDateString("en-GB")}</TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -330,6 +474,11 @@ export default function AdminB2BUsersPage() {
                         ) : (
                           <DropdownMenuItem onClick={() => void toggleActive(u.id, true)}><CheckCircle className="h-4 w-4 mr-2" /> Activate</DropdownMenuItem>
                         )}
+                        <DropdownMenuItem onClick={() => {
+                          const token = Buffer.from(u.id).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+                          const link = `${window.location.origin}/onboarding/${token}`;
+                          void navigator.clipboard.writeText(link).then(() => toast.success("Onboarding link copied!"));
+                        }}><Link2 className="h-4 w-4 mr-2" /> Copy Link</DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive" onClick={() => setDeleteUser(u)}><Trash2 className="h-4 w-4 mr-2" /> Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -350,7 +499,11 @@ export default function AdminB2BUsersPage() {
               <p><span className="text-muted-foreground">Email:</span> {selectedUser?.email || "-"}</p>
               <p><span className="text-muted-foreground">Phone:</span> {selectedUser?.phone || "-"}</p>
               <p><span className="text-muted-foreground">Display Name:</span> {selectedUser?.details?.display_name || "-"}</p>
-              <p><span className="text-muted-foreground">Customer #:</span> {selectedUser?.details?.customer_number || "-"}</p>
+              <p><span className="text-muted-foreground">Ecom Customer No:</span> {selectedUser?.details?.customer_number || "-"}</p>
+              <p><span className="text-muted-foreground">Zoho Contact ID:</span> {selectedUser?.details?.zoho_contact_id
+                ? <span className="text-blue-600 font-mono text-xs">{selectedUser.details.zoho_contact_id}</span>
+                : <span className="text-amber-600 text-xs">Not synced</span>}
+              </p>
               <p><span className="text-muted-foreground">Company:</span> {selectedUser?.details?.company_name || "-"}</p>
               <p><span className="text-muted-foreground">Contact:</span> {selectedUser?.details?.contact_name || "-"}</p>
               <p><span className="text-muted-foreground">Payment Terms:</span> {selectedUser?.details?.payment_terms || "-"}</p>
@@ -382,7 +535,7 @@ export default function AdminB2BUsersPage() {
             <div className="space-y-1.5"><Label>Phone</Label><Input value={editForm?.phone ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, phone: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Status</Label><Select value={editForm?.is_active ?? "active"} onValueChange={(v) => setEditForm((p) => (p ? { ...p, is_active: v as "active" | "inactive" } : p))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select></div>
             <div className="space-y-1.5"><Label>Display Name</Label><Input value={editForm?.display_name ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, display_name: e.target.value } : p))} /></div>
-            <div className="space-y-1.5"><Label>Customer Number</Label><Input value={editForm?.customer_number ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, customer_number: e.target.value } : p))} /></div>
+            <div className="space-y-1.5"><Label>Ecom Customer No.</Label><Input readOnly className="bg-muted" value={editForm?.customer_number ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, customer_number: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Company</Label><Input value={editForm?.company_name ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, company_name: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Contact</Label><Input value={editForm?.contact_name ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, contact_name: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Payment Terms</Label><Input value={editForm?.payment_terms ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, payment_terms: e.target.value } : p))} /></div>
@@ -395,9 +548,24 @@ export default function AdminB2BUsersPage() {
             <div className="space-y-1.5"><Label>Shipping State</Label><Input value={editForm?.shipping_state ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, shipping_state: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Shipping Phone</Label><Input value={editForm?.shipping_phone ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, shipping_phone: e.target.value } : p))} /></div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setEditUser(null); setEditForm(null); }} disabled={savingEdit}>Cancel</Button>
-            <Button onClick={() => void handleEditSave()} disabled={savingEdit} className="gap-2">{savingEdit && <Loader2 className="h-4 w-4 animate-spin" />}Save</Button>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="outline" onClick={() => { setEditUser(null); setEditForm(null); }} disabled={savingEdit || zohoSyncing === editUser?.id}>Cancel</Button>
+            <div className="flex gap-2">
+              <Button onClick={() => void handleEditSave()} disabled={savingEdit || zohoSyncing === editUser?.id} className="gap-2">
+                {savingEdit && <Loader2 className="h-4 w-4 animate-spin" />}Save
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => void handleEditSaveAndSync()}
+                disabled={savingEdit || zohoSyncing === editUser?.id}
+                className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                {(savingEdit || zohoSyncing === editUser?.id)
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <RefreshCw className="h-4 w-4" />}
+                Save &amp; Sync to Zoho
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -413,6 +581,43 @@ export default function AdminB2BUsersPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteUser(null)} disabled={deleting}>Cancel</Button>
             <Button variant="destructive" onClick={() => void handleDelete()} disabled={deleting} className="gap-2">{deleting ? <><Loader2 className="h-4 w-4 animate-spin" />Deleting…</> : <><Trash2 className="h-4 w-4" />Delete</>}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Invite link dialog ── */}
+      <Dialog open={!!inviteLink} onOpenChange={(v) => { if (!v) setInviteLink(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" /> Invite B2B Customer
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Send this link to your customer. They will create their own account — name, email, password, company details, GST, and addresses.
+          </p>
+
+          {/* Link display + copy */}
+          <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+            <p className="text-xs break-all text-muted-foreground leading-relaxed">{inviteLink}</p>
+            <Button
+              size="sm"
+              className="w-full gap-2"
+              onClick={() => {
+                void navigator.clipboard.writeText(inviteLink ?? "").then(() => toast.success("Link copied!"));
+              }}
+            >
+              <Copy className="h-3.5 w-3.5" /> Copy Link
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">This link is valid for 7 days.</p>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => void generateInviteLink()} disabled={inviteLoading}>
+              {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}New Link
+            </Button>
+            <Button size="sm" onClick={() => setInviteLink(null)}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

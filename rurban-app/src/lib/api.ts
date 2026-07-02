@@ -1,5 +1,25 @@
 // ─── Backend API base URL ────────────────────────────────────────────────────
-export const API_BASE = 'http://13.200.222.72';
+// Priority: EXPO_PUBLIC_API_BASE env var → app.json extra.apiBase → hardcoded fallback
+// For development: set EXPO_PUBLIC_API_BASE in a .env file so it never relies
+// on the stale Expo manifest cache (which can hold dead localtunnel URLs, etc.)
+import Constants from "expo-constants";
+
+// Reject obviously invalid values (e.g. stale localtunnel URLs that are no longer alive)
+function resolveApiBase(): string {
+  const candidates = [
+    process.env.EXPO_PUBLIC_API_BASE,
+    Constants.expoConfig?.extra?.apiBase as string | undefined,
+  ];
+  for (const url of candidates) {
+    if (url && !url.includes("loca.lt") && !url.includes("yourdomain.com")) {
+      return url. replace(/\/$/, ""); // strip trailing slash
+    }
+  }
+  // Hardcoded fallback — update this to your machine's LAN IP
+  return "http://10.126.233.75:3000";
+}
+
+export const API_BASE: string = resolveApiBase();
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface Banner {

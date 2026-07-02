@@ -1,4 +1,6 @@
-﻿export const dynamic = 'force-dynamic';
+﻿// Home page is statically generated and revalidated every 60 seconds (ISR).
+// This eliminates 9 parallel DB queries per visitor and serves from CDN cache.
+export const revalidate = 60;
 
 import { redirect } from "next/navigation";
 import Link from "next/link";

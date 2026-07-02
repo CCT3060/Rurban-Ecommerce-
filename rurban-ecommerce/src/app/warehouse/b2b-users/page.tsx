@@ -1,9 +1,9 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  UserPlus, Search, Download, Loader2, Trash2, MoreHorizontal, Eye, Pencil, Ban, CheckCircle,
+  UserPlus, Search, Download, Loader2, Trash2, MoreHorizontal, Eye, Pencil, Ban, CheckCircle, Link2, Copy, BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,8 +47,7 @@ type CustomerDetails = {
   shipping_state?: string | null;
   shipping_country?: string | null;
   shipping_code?: string | null;
-  shipping_phone?: string | null;
-};
+  shipping_phone?: string | null;  zoho_contact_id?: string | null;};
 
 type B2BUser = {
   id: string;
@@ -133,6 +132,23 @@ export default function WarehouseB2BUsersPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleteUser, setDeleteUser] = useState<B2BUser | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [zohoSyncingId, setZohoSyncingId] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+
+  const generateInviteLink = async () => {
+    setInviteLoading(true);
+    try {
+      const res = await fetch("/api/warehouse/b2b-invite");
+      const json = (await res.json()) as { link?: string; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to generate link");
+      setInviteLink(json.link ?? null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate link");
+    } finally {
+      setInviteLoading(false);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -215,6 +231,21 @@ export default function WarehouseB2BUsersPage() {
     }
   };
 
+  const syncToZoho = async (userId: string) => {
+    setZohoSyncingId(userId);
+    try {
+      const res = await fetch(`/api/warehouse/customers/${userId}/zoho-sync`, { method: "POST" });
+      const json = (await res.json()) as { zohoContactId?: string; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Zoho sync failed");
+      toast.success(`Synced to Zoho Books${json.zohoContactId ? ` — ID: ${json.zohoContactId}` : ""}`);
+      await fetchUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Zoho sync failed");
+    } finally {
+      setZohoSyncingId(null);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteUser) return;
     setDeleting(true);
@@ -243,8 +274,8 @@ export default function WarehouseB2BUsersPage() {
           <Button variant="outline" className="gap-2" onClick={() => downloadCsv(users)} disabled={users.length === 0}>
             <Download className="h-4 w-4" /> Export CSV
           </Button>
-          <Button className="gap-2" onClick={() => router.push("/warehouse/b2b-users/new")}>
-            <UserPlus className="h-4 w-4" /> Add B2B User
+          <Button className="gap-2" onClick={() => void generateInviteLink()} disabled={inviteLoading}>
+            {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Add B2B User
           </Button>
         </div>
       </div>
@@ -268,6 +299,7 @@ export default function WarehouseB2BUsersPage() {
                 <TableHead>User</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Price Status</TableHead>
+                <TableHead>Zoho</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-12" />
               </TableRow>
@@ -304,6 +336,15 @@ export default function WarehouseB2BUsersPage() {
                     </div>
                   </TableCell>
                   <TableCell>
+                    {u.details?.zoho_contact_id ? (
+                      <Badge className="bg-blue-100 text-blue-700 border-0 gap-1">
+                        <BookOpen className="h-3 w-3" /> Synced
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-orange-100 text-orange-700 border-0">Not synced</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <Badge className={u.is_active ? "bg-green-100 text-green-700 border-0" : "bg-gray-100 text-gray-700 border-0"}>
                       {u.is_active ? "active" : "inactive"}
                     </Badge>
@@ -316,11 +357,25 @@ export default function WarehouseB2BUsersPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setSelectedUser(u)}><Eye className="h-4 w-4 mr-2" /> View</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => { setEditUser(u); setEditForm(toEditForm(u)); }}><Pencil className="h-4 w-4 mr-2" /> Edit</DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => void syncToZoho(u.id)}
+                          disabled={zohoSyncingId === u.id}
+                        >
+                          {zohoSyncingId === u.id
+                            ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            : <BookOpen className="h-4 w-4 mr-2" />}
+                          {u.details?.zoho_contact_id ? "Re-sync to Zoho" : "Sync to Zoho Books"}
+                        </DropdownMenuItem>
                         {u.is_active ? (
                           <DropdownMenuItem className="text-destructive" onClick={() => void toggleActive(u.id, false)}><Ban className="h-4 w-4 mr-2" /> Deactivate</DropdownMenuItem>
                         ) : (
                           <DropdownMenuItem onClick={() => void toggleActive(u.id, true)}><CheckCircle className="h-4 w-4 mr-2" /> Activate</DropdownMenuItem>
                         )}
+                        <DropdownMenuItem onClick={() => {
+                          const token = Buffer.from(u.id).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+                          const link = `${window.location.origin}/onboarding/${token}`;
+                          void navigator.clipboard.writeText(link).then(() => toast.success("Onboarding link copied!"));
+                        }}><Link2 className="h-4 w-4 mr-2" /> Copy Link</DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive" onClick={() => setDeleteUser(u)}><Trash2 className="h-4 w-4 mr-2" /> Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -341,7 +396,7 @@ export default function WarehouseB2BUsersPage() {
               <p><span className="text-muted-foreground">Email:</span> {selectedUser?.email || "-"}</p>
               <p><span className="text-muted-foreground">Phone:</span> {selectedUser?.phone || "-"}</p>
               <p><span className="text-muted-foreground">Display Name:</span> {selectedUser?.details?.display_name || "-"}</p>
-              <p><span className="text-muted-foreground">Customer #:</span> {selectedUser?.details?.customer_number || "-"}</p>
+              <p><span className="text-muted-foreground">Ecom Customer No:</span> {selectedUser?.details?.customer_number || "-"}</p>
               <p><span className="text-muted-foreground">Company:</span> {selectedUser?.details?.company_name || "-"}</p>
               <p><span className="text-muted-foreground">Contact:</span> {selectedUser?.details?.contact_name || "-"}</p>
               <p><span className="text-muted-foreground">Payment Terms:</span> {selectedUser?.details?.payment_terms || "-"}</p>
@@ -373,7 +428,7 @@ export default function WarehouseB2BUsersPage() {
             <div className="space-y-1.5"><Label>Phone</Label><Input value={editForm?.phone ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, phone: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Status</Label><Select value={editForm?.is_active ?? "active"} onValueChange={(v) => setEditForm((p) => (p ? { ...p, is_active: v as "active" | "inactive" } : p))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select></div>
             <div className="space-y-1.5"><Label>Display Name</Label><Input value={editForm?.display_name ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, display_name: e.target.value } : p))} /></div>
-            <div className="space-y-1.5"><Label>Customer Number</Label><Input value={editForm?.customer_number ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, customer_number: e.target.value } : p))} /></div>
+            <div className="space-y-1.5"><Label>Ecom Customer No.</Label><Input readOnly className="bg-muted" value={editForm?.customer_number ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, customer_number: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Company</Label><Input value={editForm?.company_name ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, company_name: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Contact</Label><Input value={editForm?.contact_name ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, contact_name: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Payment Terms</Label><Input value={editForm?.payment_terms ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, payment_terms: e.target.value } : p))} /></div>
@@ -404,6 +459,42 @@ export default function WarehouseB2BUsersPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteUser(null)} disabled={deleting}>Cancel</Button>
             <Button variant="destructive" onClick={() => void handleDelete()} disabled={deleting} className="gap-2">{deleting ? <><Loader2 className="h-4 w-4 animate-spin" />Deleting…</> : <><Trash2 className="h-4 w-4" />Delete</>}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Invite link dialog ── */}
+      <Dialog open={!!inviteLink} onOpenChange={(v) => { if (!v) setInviteLink(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" /> Invite B2B Customer
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Send this link to your customer. They will create their own account — name, email, password, company details, GST, and addresses.
+          </p>
+
+          <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+            <p className="text-xs break-all text-muted-foreground leading-relaxed">{inviteLink}</p>
+            <Button
+              size="sm"
+              className="w-full gap-2"
+              onClick={() => {
+                void navigator.clipboard.writeText(inviteLink ?? "").then(() => toast.success("Link copied!"));
+              }}
+            >
+              <Copy className="h-3.5 w-3.5" /> Copy Link
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">This link is valid for 7 days.</p>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => void generateInviteLink()} disabled={inviteLoading}>
+              {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}New Link
+            </Button>
+            <Button size="sm" onClick={() => setInviteLink(null)}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

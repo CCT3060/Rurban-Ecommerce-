@@ -51,6 +51,7 @@ type OrderDetail = {
   status: OrderStatus;
   payment_status: PaymentStatus;
   payment_method: string | null;
+  b2b_payment_terms: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -58,6 +59,8 @@ type OrderDetail = {
   billing_address: Address | null;
   user: { full_name: string | null; email: string | null; phone?: string | null } | null;
   order_items: OrderItem[];
+  zoho_salesorder_id: string | null;
+  zoho_salesorder_number: string | null;
 };
 
 /* ─── Constants ───────────────────────────────────────────────────────────── */
@@ -113,6 +116,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [postingToZoho, setPostingToZoho] = useState(false);
 
   const fetchOrder = async () => {
     try {
@@ -128,6 +132,25 @@ export default function OrderDetailPage() {
   };
 
   useEffect(() => { void fetchOrder(); }, [id]);
+
+  const postToZoho = async () => {
+    if (!order) return;
+    setPostingToZoho(true);
+    console.log("[postToZoho] Posting order to Zoho Books:", order.id, order.order_number);
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/zoho-post`, { method: "POST" });
+      const json = (await res.json()) as { zohoSalesorderNumber?: string; pdfAttachment?: unknown; error?: string };
+      console.log("[postToZoho] Response status:", res.status, "body:", JSON.stringify(json));
+      if (!res.ok) throw new Error(json.error ?? "Failed to post to Zoho");
+      toast.success(`Posted to Zoho Books — SO# ${json.zohoSalesorderNumber}`);
+      await fetchOrder();
+    } catch (e) {
+      console.error("[postToZoho] Error:", e);
+      toast.error(e instanceof Error ? e.message : "Failed to post to Zoho");
+    } finally {
+      setPostingToZoho(false);
+    }
+  };
 
   const updateOrder = async (payload: { status?: string; payment_status?: string }) => {
     if (!order) return;
@@ -172,19 +195,34 @@ export default function OrderDetailPage() {
   const customerPhone = order.user?.phone ?? "";
   const deliverLines = addrBlock(order.shipping_address);
 
+  // Parse requested delivery date from notes (format: "Requested delivery date: <date>")
+  const deliveryDate = (() => {
+    if (!order.notes) return null;
+    const match = order.notes.match(/Requested delivery date:\s*(.+)/i);
+    return match ? match[1].trim() : null;
+  })();
+
   // Tax breakdown grouped by rate
   const taxGroups = new Map<number, { cgst: number; sgst: number }>();
   order.order_items.forEach((item) => {
     const rate = item.intra_state_tax_rate ?? 0;
+    const halfRate = rate / 2;
     const lineTotal = Number(item.price) * item.quantity;
     const existing = taxGroups.get(rate) ?? { cgst: 0, sgst: 0 };
     taxGroups.set(rate, {
-      cgst: existing.cgst + (lineTotal * rate) / 100,
-      sgst: existing.sgst + (lineTotal * rate) / 100,
+      cgst: existing.cgst + (lineTotal * halfRate) / 100,
+      sgst: existing.sgst + (lineTotal * halfRate) / 100,
     });
   });
 
   const totalQty = order.order_items.reduce((s, i) => s + i.quantity, 0);
+
+  // Compute total tax from per-item rates (CGST + SGST)
+  const totalTax = Array.from(taxGroups.values()).reduce(
+    (s, t) => s + t.cgst + t.sgst,
+    0
+  );
+  const grandTotal = Number(order.subtotal) + totalTax + Number(order.shipping_cost) - Number(order.discount);
 
   return (
     <>
@@ -226,6 +264,26 @@ export default function OrderDetailPage() {
           <Button variant="default" size="sm" className="gap-2" onClick={() => window.print()}>
             <Download className="h-3.5 w-3.5" /> Export PDF
           </Button>
+          {order.zoho_salesorder_id ? (
+            <a
+              href={`https://books.zoho.in/app#/salesorders/${order.zoho_salesorder_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md border border-green-300 bg-green-50 px-3 py-1.5 text-sm text-green-700 hover:bg-green-100"
+            >
+              ✓ In Zoho ({order.zoho_salesorder_number})
+            </a>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+              disabled={postingToZoho}
+              onClick={() => void postToZoho()}
+            >
+              {postingToZoho ? "Posting…" : "Post to Zoho Books"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -281,22 +339,22 @@ export default function OrderDetailPage() {
             </div>
             <div className="flex gap-1 text-[11px]">
               <span className="font-semibold w-[110px] shrink-0">Terms </span>
-              <span>: <strong className="capitalize">{order.payment_method ?? "Advance Payment"}</strong></span>
+              <span>: <strong className="capitalize">{order.b2b_payment_terms ?? order.payment_method ?? "Advance Payment"}</strong></span>
             </div>
             <div className="flex gap-1 text-[11px]">
-              <span className="font-semibold w-[110px] shrink-0">Payment Status </span>
-              <span>: <span className="capitalize">{order.payment_status}</span></span>
+              <span className="font-semibold w-[110px] shrink-0">Delivery Date </span>
+              <span>: <strong>{deliveryDate ?? "—"}</strong></span>
             </div>
           </div>
-          {/* Right: Place of supply / Status */}
+          {/* Right: Place of supply / Delivery Date */}
           <div className="px-5 py-2 space-y-[3px]">
             <div className="flex gap-1 text-[11px]">
               <span className="font-semibold w-[110px] shrink-0">Place Of Supply </span>
               <span>: Maharashtra (27)</span>
             </div>
             <div className="flex gap-1 text-[11px]">
-              <span className="font-semibold w-[110px] shrink-0">Order Status </span>
-              <span>: <span className="capitalize">{order.status}</span></span>
+              <span className="font-semibold w-[110px] shrink-0">Delivery Date </span>
+              <span>: <strong>{deliveryDate ?? "—"}</strong></span>
             </div>
           </div>
         </div>
@@ -360,8 +418,11 @@ export default function OrderDetailPage() {
           <tbody>
             {order.order_items.map((item, idx) => {
               const lineAmt = Number(item.price) * item.quantity;
-              const cgstRate = item.intra_state_tax_rate ?? 0;
-              const sgstRate = item.intra_state_tax_rate ?? 0;
+              const totalRate = item.intra_state_tax_rate ?? 0;
+              const cgstRate = totalRate / 2;
+              const sgstRate = totalRate / 2;
+              const cgstAmt = (lineAmt * cgstRate) / 100;
+              const sgstAmt = (lineAmt * sgstRate) / 100;
               return (
                 <tr key={item.id} style={{ backgroundColor: idx % 2 === 0 ? "#ffffff" : "#f9fafb" }}>
                   <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">{idx + 1}</td>
@@ -375,8 +436,14 @@ export default function OrderDetailPage() {
                     {item.zoho_unit && <><br /><span className="text-gray-500">{item.zoho_unit}</span></>}
                   </td>
                   <td className="border border-[#e5e7eb] px-2 py-[5px] text-right font-mono">{fmt(Number(item.price))}</td>
-                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">{cgstRate}%</td>
-                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">{sgstRate}%</td>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">
+                    <div className="text-[10px] text-gray-500">{cgstRate}%</div>
+                    <div className="font-mono">{fmt(cgstAmt)}</div>
+                  </td>
+                  <td className="border border-[#e5e7eb] px-2 py-[5px] text-center">
+                    <div className="text-[10px] text-gray-500">{sgstRate}%</div>
+                    <div className="font-mono">{fmt(sgstAmt)}</div>
+                  </td>
                   <td className="border border-[#e5e7eb] px-2 py-[5px] text-right font-mono">{fmt(lineAmt)}</td>
                 </tr>
               );
@@ -412,11 +479,11 @@ export default function OrderDetailPage() {
             {Array.from(taxGroups.entries()).map(([rate, amounts]) => (
               <React.Fragment key={rate}>
                 <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
-                  <span>CGST{rate > 0 ? rate : 0} ({rate}%)</span>
+                  <span>CGST ({rate / 2}%)</span>
                   <span className="font-mono">{fmt(amounts.cgst)}</span>
                 </div>
                 <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
-                  <span>SGST{rate > 0 ? rate : 0} ({rate}%)</span>
+                  <span>SGST ({rate / 2}%)</span>
                   <span className="font-mono">{fmt(amounts.sgst)}</span>
                 </div>
               </React.Fragment>
@@ -441,7 +508,7 @@ export default function OrderDetailPage() {
             {/* Total */}
             <div className="flex justify-between px-4 py-[6px] text-[13px] font-bold">
               <span>Total</span>
-              <span className="font-mono">₹{fmt(Number(order.total))}</span>
+              <span className="font-mono">₹{fmt(grandTotal)}</span>
             </div>
           </div>
         </div>

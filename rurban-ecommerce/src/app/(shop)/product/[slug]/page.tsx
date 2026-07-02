@@ -16,6 +16,7 @@ import { useCartStore } from "@/stores/cart-store";
 import { useWishlistStore } from "@/stores/wishlist-store";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import DOMPurify from "isomorphic-dompurify";
 import type { Product } from "@/types";
 
 type ProductResponse = {
@@ -271,7 +272,7 @@ export default function ProductDetailPage() {
               <TabsTrigger value="description" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary">Description</TabsTrigger>
             </TabsList>
             <TabsContent value="description" className="mt-6">
-              <div className="prose max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: product.description || "No description available." }} />
+              <div className="prose max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description || "No description available.") }} />
             </TabsContent>
           </Tabs>
         </div>

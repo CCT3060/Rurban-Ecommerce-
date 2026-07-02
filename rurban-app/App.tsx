@@ -14,6 +14,7 @@ import * as Notifications from 'expo-notifications';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { CartProvider, useCart } from './src/context/CartContext';
 import { WishlistProvider } from './src/context/WishlistContext';
+import { NavbarProvider, useNavbar } from './src/context/NavbarContext';
 import { COLORS } from './src/lib/theme';
 import {
   configureForegroundNotifications,
@@ -33,6 +34,7 @@ import WishlistScreen       from './src/screens/WishlistScreen';
 import AllProductsScreen      from './src/screens/AllProductsScreen';
 import ProductDetailScreen   from './src/screens/ProductDetailScreen';
 import B2BCatalogueScreen from './src/screens/B2BCatalogueScreen';
+import AllItemsScreen    from './src/screens/AllItemsScreen';
 import LoginScreen           from './src/screens/LoginScreen';
 import SignupScreen          from './src/screens/SignupScreen';
 import WarehouseDashboardScreen from './src/screens/WarehouseDashboardScreen';
@@ -44,6 +46,7 @@ const CartStack = createNativeStackNavigator();
 const AuthStack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator();
 const B2BStack  = createNativeStackNavigator();
+const AIStack   = createNativeStackNavigator();
 const WHStack   = createNativeStackNavigator();
 
 // ─── Navigators ───────────────────────────────────────────────────────────────
@@ -83,10 +86,11 @@ function CartStackNav() {
 
 function ViewCartBar() {
   const { totalQty, totalPrice } = useCart();
+  const { isNavVisible } = useNavbar();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
 
-  const translateY = useRef(new Animated.Value(200)).current;
+  const translateY  = useRef(new Animated.Value(200)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim   = useRef(new Animated.Value(1)).current;
   const prevQty     = useRef(0);
@@ -138,14 +142,18 @@ function ViewCartBar() {
   }, [totalQty]);
 
   return (
-    <Animated.View
-      style={[vc.bar, {
-        bottom: insets.bottom + 68,
-        opacity: opacityAnim,
-        transform: [{ translateY }, { scale: scaleAnim }],
+    <View
+      style={[vc.posWrapper, {
+        bottom: isNavVisible ? insets.bottom + 68 : insets.bottom + 8,
       }]}
       pointerEvents={totalQty === 0 ? 'none' : 'auto'}
     >
+      <Animated.View
+        style={[vc.bar, {
+          opacity: opacityAnim,
+          transform: [{ translateY }, { scale: scaleAnim }],
+        }]}
+      >
       <View style={vc.left}>
         <View style={vc.badge}>
           <Text style={vc.badgeText}>{totalQty}</Text>
@@ -161,15 +169,18 @@ function ViewCartBar() {
         <Text style={vc.btnText}>View Cart</Text>
         <Ionicons name="arrow-forward" size={14} color="#fff" style={{ marginLeft: 6 }} />
       </TouchableOpacity>
-    </Animated.View>
+      </Animated.View>
+    </View>
   );
 }
 
 const vc = StyleSheet.create({
-  bar: {
+  posWrapper: {
     position: 'absolute',
     left: 12,
     right: 12,
+  },
+  bar: {
     backgroundColor: '#152318',
     borderRadius: 20,
     flexDirection: 'row',
@@ -202,6 +213,15 @@ function B2BCatalogueStack() {
     </B2BStack.Navigator>
   );
 }
+
+function AllItemsStackNav() {
+  return (
+    <AIStack.Navigator screenOptions={{ headerShown: false }}>
+      <AIStack.Screen name="AllItemsMain" component={AllItemsScreen} />
+      <AIStack.Screen name="ProductDetail" component={ProductDetailScreen} />
+    </AIStack.Navigator>
+  );
+}
 // ─── Warehouse Stack ─────────────────────────────────────────────────────────────
 
 function WarehouseStack() {
@@ -214,6 +234,7 @@ function WarehouseStack() {
 // ─── B2B Tabs (catalogue + orders + profile) ──────────────────────────────────
 
 function B2BTabs() {
+  const { isNavVisible } = useNavbar();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -221,6 +242,7 @@ function B2BTabs() {
         tabBarIcon: ({ focused, color, size }) => {
           const icons: Record<string, [string, string]> = {
             Catalogue: ['grid',    'grid-outline'],
+            AllItems:  ['apps',    'apps-outline'],
             Orders:    ['receipt', 'receipt-outline'],
             Profile:   ['person',  'person-outline'],
           };
@@ -230,7 +252,7 @@ function B2BTabs() {
         tabBarActiveTintColor:   '#111111',
         tabBarInactiveTintColor: '#9CA3AF',
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginBottom: 2 },
-        tabBarStyle: {
+        tabBarStyle: isNavVisible ? {
           borderTopWidth: 1,
           borderTopColor: '#E5E7EB',
           elevation: 8,
@@ -239,10 +261,11 @@ function B2BTabs() {
           shadowOpacity: 0.08,
           shadowRadius: 6,
           backgroundColor: '#fff',
-        },
+        } : { display: 'none' },
       })}
     >
       <Tab.Screen name="Catalogue" component={B2BCatalogueStack} />
+      <Tab.Screen name="AllItems"  component={AllItemsStackNav} options={{ tabBarLabel: 'All Items' }} />
       <Tab.Screen name="Orders"    component={OrdersScreen} />
       <Tab.Screen name="Profile"   component={ProfileScreen} />
     </Tab.Navigator>
@@ -251,10 +274,12 @@ function B2BTabs() {
 
 function B2BWithOverlay() {
   return (
-    <View style={{ flex: 1 }}>
-      <B2BTabs />
-      <ViewCartBar />
-    </View>
+    <NavbarProvider>
+      <View style={{ flex: 1 }}>
+        <B2BTabs />
+        <ViewCartBar />
+      </View>
+    </NavbarProvider>
   );
 }
 

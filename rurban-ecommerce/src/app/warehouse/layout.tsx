@@ -12,7 +12,7 @@ const navItems = [
   { label: "Products", href: "/warehouse/products", icon: Package },
   { label: "Orders", href: "/warehouse/orders", icon: ShoppingCart },
   { label: "Customer", href: "/warehouse/b2b-users", icon: UserCheck },
-  { label: "User Prices", href: "/warehouse/user-prices", icon: Tag },
+  { label: "Price List", href: "/warehouse/user-prices", icon: Tag },
   { label: "Profile", href: "/warehouse/profile", icon: UserRound },
 ];
 

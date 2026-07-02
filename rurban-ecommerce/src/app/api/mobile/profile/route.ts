@@ -52,12 +52,24 @@ export async function GET(request: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const profileRow = profile as any;
 
+  // For B2B users, also return their shipping details
+  let b2bDetails = null;
+  if (profileRow.user_type === "b2b") {
+    const { data: details } = await admin
+      .from("b2b_customer_details")
+      .select("shipping_address,shipping_street2,shipping_city,shipping_state,shipping_code,shipping_phone,shipping_attention,payment_terms")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    b2bDetails = details ?? null;
+  }
+
   return NextResponse.json({
     data: {
       ...profileRow,
       order_count: orderCount ?? 0,
       wishlist_count: wishlistCount ?? 0,
       total_saved: Math.round(totalSaved),
+      b2b_details: b2bDetails,
     },
   });
 }

@@ -18,7 +18,7 @@ async function requireAdmin() {
   }
 
   const role =
-    (user.app_metadata?.role as string | undefined) ?? (user.user_metadata?.role as string | undefined);
+    user.app_metadata?.role as string | undefined;
 
   if (role !== "admin") {
     return {

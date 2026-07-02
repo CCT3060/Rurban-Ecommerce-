@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPushToTokens } from "@/lib/push-notifications";
+import { generateOrderNumber } from "@/lib/order-number";
 
 function getBearerToken(request: Request): string | null {
   const auth = request.headers.get("Authorization");
   if (!auth?.startsWith("Bearer ")) return null;
   return auth.slice(7).trim();
-}
-
-function generateOrderNumber() {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
-  return `RB-${timestamp}-${random}`;
 }
 
 function toPositiveInt(value: unknown): number | null {
@@ -110,14 +105,14 @@ export async function POST(request: Request) {
 
   const { data: productsData, error: productsError } = await admin
     .from("products")
-    .select("id,name,price,sale_price,stock,status,images:product_images(image_url,is_primary)")
+    .select("id,name,price,sale_price,stock,status,hsn_or_sac,intra_state_tax_rate,inter_state_tax_rate,zoho_unit,images:product_images(image_url,is_primary)")
     .in("id", productIds);
 
   if (productsError) {
     return NextResponse.json({ error: productsError.message }, { status: 400 });
   }
 
-  type ProductRow = { id: string; name: string; price: number; sale_price: number | null; stock: number; status: string; images: Array<{ image_url: string; is_primary: boolean }> | null };
+  type ProductRow = { id: string; name: string; price: number; sale_price: number | null; stock: number; status: string; hsn_or_sac: string | null; intra_state_tax_rate: number | null; inter_state_tax_rate: number | null; zoho_unit: string | null; images: Array<{ image_url: string; is_primary: boolean }> | null };
   const productMap = new Map<string, ProductRow>(
     ((productsData ?? []) as ProductRow[]).map(p => [p.id, p])
   );
@@ -138,15 +133,16 @@ export async function POST(request: Request) {
     quantity: number;
     image_url: string | null;
     variant_info: string | null;
+    hsn_or_sac: string | null;
+    intra_state_tax_rate: number | null;
+    inter_state_tax_rate: number | null;
+    zoho_unit: string | null;
   }> = [];
 
   for (const item of lineItems) {
     const product = productMap.get(item.productId)!;
     if (product.status !== "active") {
       return NextResponse.json({ error: `Product "${product.name}" is not available` }, { status: 400 });
-    }
-    if (item.quantity > product.stock) {
-      return NextResponse.json({ error: `Insufficient stock for ${product.name}` }, { status: 400 });
     }
 
     const unitPrice = customPriceMap.has(item.productId)
@@ -166,27 +162,41 @@ export async function POST(request: Request) {
       quantity: item.quantity,
       image_url: primaryImg,
       variant_info: null,
+      hsn_or_sac: product.hsn_or_sac ?? null,
+      intra_state_tax_rate: product.intra_state_tax_rate ?? null,
+      inter_state_tax_rate: product.inter_state_tax_rate ?? null,
+      zoho_unit: product.zoho_unit ?? null,
     });
   }
 
   const shippingCost = subtotal >= 199 ? 0 : 29;
-  const total = subtotal + shippingCost;
+
+  // Calculate total tax (CGST + SGST = intra_state_tax_rate applied to line total)
+  const totalTax = orderItemsPayload.reduce((sum, item) => {
+    const rate = item.intra_state_tax_rate ?? 0;
+    return sum + (item.price * item.quantity * rate) / 100;
+  }, 0);
+
+  const total = subtotal + totalTax + shippingCost;
   const paymentMethod = String(body.paymentMethod ?? "cod").trim();
+
+  const orderNumber = await generateOrderNumber();
 
   const { data: order, error: orderError } = await admin
     .from("orders")
     .insert({
       user_id: user.id,
-      order_number: generateOrderNumber(),
+      order_number: orderNumber,
       subtotal,
       discount: 0,
-      tax: 0,
+      tax: totalTax,
       shipping_cost: shippingCost,
       total,
       status: "pending",
       payment_status: paymentMethod === "cod" ? "pending" : "paid",
       payment_method: paymentMethod,
       shipping_address: { firstName, lastName, phone, street, city, state, zip },
+      notes: typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null,
     })
     .select("id,order_number,total,status")
     .single();

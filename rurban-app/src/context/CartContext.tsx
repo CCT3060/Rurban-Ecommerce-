@@ -1,5 +1,8 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Product } from '../lib/api';
+
+const CART_STORAGE_KEY = '@rurban_cart';
 
 export interface CartItem {
   product: Product;
@@ -12,6 +15,7 @@ interface CartContextValue {
   totalPrice: number;
   addItem: (product: Product) => void;
   removeItem: (productId: string) => void;
+  setQty: (productId: string, qty: number, product: Product) => void;
   clearCart: () => void;
   getQty: (productId: string) => number;
 }
@@ -20,6 +24,23 @@ const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
+
+  // Restore cart from storage on mount
+  useEffect(() => {
+    AsyncStorage.getItem(CART_STORAGE_KEY)
+      .then(stored => {
+        if (stored) {
+          const parsed = JSON.parse(stored) as CartItem[];
+          if (Array.isArray(parsed)) setItems(parsed);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Persist cart to storage whenever it changes
+  useEffect(() => {
+    AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items)).catch(() => {});
+  }, [items]);
 
   const addItem = useCallback((product: Product) => {
     setItems(prev => {
@@ -46,7 +67,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const clearCart = useCallback(() => setItems([]), []);
+  const clearCart = useCallback(() => {
+    setItems([]);
+    AsyncStorage.removeItem(CART_STORAGE_KEY).catch(() => {});
+  }, []);
+
+  const setQty = useCallback((productId: string, qty: number, product: Product) => {
+    setItems(prev => {
+      const clamped = Math.max(0, Math.min(qty, product.stock));
+      if (clamped === 0) return prev.filter(i => i.product.id !== productId);
+      const existing = prev.find(i => i.product.id === productId);
+      if (existing) return prev.map(i => i.product.id === productId ? { ...i, quantity: clamped } : i);
+      return [...prev, { product, quantity: clamped }];
+    });
+  }, []);
 
   const getQty = useCallback((productId: string) =>
     items.find(i => i.product.id === productId)?.quantity ?? 0, [items]);
@@ -58,7 +92,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, 0);
 
   return (
-    <CartContext.Provider value={{ items, totalQty, totalPrice, addItem, removeItem, clearCart, getQty }}>
+    <CartContext.Provider value={{ items, totalQty, totalPrice, addItem, removeItem, setQty, clearCart, getQty }}>
       {children}
     </CartContext.Provider>
   );

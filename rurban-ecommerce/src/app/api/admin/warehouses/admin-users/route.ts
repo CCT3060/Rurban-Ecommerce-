@@ -62,11 +62,10 @@ export async function POST(request: Request) {
     email_confirm: true,
     user_metadata: {
       full_name: body.full_name?.trim() || null,
-      role: "warehouse_admin",
-      warehouse_id: warehouseId,
     },
     app_metadata: {
       role: "warehouse_admin",
+      warehouse_id: warehouseId, // stored in app_metadata (service-role-only) as authoritative fallback
     },
   });
 
@@ -74,16 +73,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: authError?.message || "Failed to create warehouse admin" }, { status: 400 });
   }
 
+  // Use upsert so the profile row is created/updated atomically even if the
+  // handle_new_user trigger hasn't committed yet (avoids silent 0-row updates).
   const { error: profileError } = await admin
     .from("profiles")
-    .update({
-      full_name: body.full_name?.trim() || null,
-      email,
-      role: "warehouse_admin",
-      warehouse_id: warehouseId,
-      is_active: true,
-    })
-    .eq("id", createdUser.user.id);
+    .upsert(
+      {
+        id: createdUser.user.id,
+        full_name: body.full_name?.trim() || null,
+        email,
+        role: "warehouse_admin",
+        warehouse_id: warehouseId,
+        is_active: true,
+      },
+      { onConflict: "id" }
+    );
 
   if (profileError) {
     const mapped = mapWarehouseSchemaError(profileError.message);

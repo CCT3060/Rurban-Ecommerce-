@@ -33,7 +33,7 @@ export default function ProductCard({
   const primaryImage =
     product.images?.find((img) => img.is_primary)?.image_url ||
     product.images?.[0]?.image_url ||
-    "/images/placeholder.jpg";
+    "/images/placeholder.svg";
   const safeImageUrl = normalizeSupabaseImageUrl(primaryImage);
 
   const isOutOfStock = product.stock <= 0;

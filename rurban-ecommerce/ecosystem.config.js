@@ -6,8 +6,10 @@ module.exports = {
       script: 'node_modules/.bin/next',
       args: 'start',
       cwd: '/var/www/rurban-ecommerce',
-      instances: 1,
-      exec_mode: 'fork',
+      // Cluster mode utilises all CPU cores and provides automatic fault tolerance.
+      // If one process crashes, PM2 restarts it while others keep serving traffic.
+      instances: 'max',
+      exec_mode: 'cluster',
       watch: false,
       max_memory_restart: '1G',
       env: {
@@ -19,7 +21,4 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
   ],
-
-  // Replace the Vercel cron — runs every hour on the EC2 server itself
-  // PM2 doesn't support cron directly; we use a system crontab (see deploy guide)
 };

@@ -41,7 +41,7 @@ const sidebarGroups = [
       { label: "Orders", href: "/admin/orders", icon: ShoppingCart },
       { label: "Customers", href: "/admin/customers", icon: Users },
       { label: "Customer", href: "/admin/b2b-users", icon: UserCheck },
-      { label: "User Prices", href: "/admin/user-prices", icon: Tag },
+      { label: "Price List", href: "/admin/user-prices", icon: Tag },
     ],
   },
   {
@@ -54,7 +54,7 @@ const sidebarGroups = [
     label: "System",
     items: [
       { label: "Warehouses", href: "/admin/warehouses", icon: Warehouse },
-      { label: "Lookup Masters", href: "/admin/masters", icon: ListChecks },
+      { label: "Masters", href: "/admin/masters", icon: ListChecks },
       { label: "Zoho Books", href: "/admin/zoho", icon: BookOpen },
       { label: "Settings", href: "/admin/settings", icon: Settings },
     ],

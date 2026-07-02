@@ -13,22 +13,43 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 export default function CartPage() {
-  const { items, removeItem, updateQuantity, clearCart, getSubtotal } = useCartStore();
-  const [coupon, setCoupon] = useState("");
-  const [couponApplied, setCouponApplied] = useState(false);
+  const { items, removeItem, updateQuantity, clearCart, getSubtotal, couponCode, couponDiscount, setCoupon, clearCoupon } = useCartStore();
+  const [couponInput, setCouponInput] = useState(couponCode ?? "");
+  const [couponLoading, setCouponLoading] = useState(false);
 
   const subtotal = getSubtotal();
   const shipping = subtotal >= 999 ? 0 : 49;
-  const discount = couponApplied ? subtotal * 0.1 : 0;
+  const discount = couponDiscount;
   const total = subtotal - discount + shipping;
 
-  const handleApplyCoupon = () => {
-    if (coupon.toUpperCase() === "RURBAN10") {
-      setCouponApplied(true);
-      toast.success("Coupon applied! 10% discount added.");
-    } else {
-      toast.error("Invalid coupon code");
+  const handleApplyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) {
+      toast.error("Please enter a coupon code");
+      return;
     }
+    setCouponLoading(true);
+    try {
+      const res = await fetch(`/api/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal}`);
+      const json = (await res.json()) as { data?: { code: string; discount_amount: number }; error?: string };
+      if (!res.ok || !json.data) {
+        clearCoupon();
+        toast.error(json.error ?? "Invalid coupon code");
+        return;
+      }
+      setCoupon(json.data.code, json.data.discount_amount);
+      toast.success(`Coupon applied! ${formatPrice(json.data.discount_amount)} discount added.`);
+    } catch {
+      toast.error("Failed to validate coupon. Please try again.");
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    clearCoupon();
+    setCouponInput("");
+    toast.info("Coupon removed");
   };
 
   if (items.length === 0) {
@@ -124,21 +145,28 @@ export default function CartPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Coupon */}
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Coupon code"
-                    value={coupon}
-                    onChange={(e) => setCoupon(e.target.value)}
-                    className="text-sm"
-                  />
-                  <Button variant="outline" size="sm" onClick={handleApplyCoupon} disabled={couponApplied}>
-                    <Tag className="h-4 w-4 mr-1" /> Apply
-                  </Button>
-                </div>
-                {couponApplied && (
-                  <p className="text-xs text-success flex items-center gap-1">
-                    ✓ RURBAN10 applied — 10% discount
-                  </p>
+                {couponCode ? (
+                  <div className="flex items-center justify-between bg-success/10 rounded-lg px-3 py-2">
+                    <p className="text-xs text-success font-medium flex items-center gap-1">
+                      <Tag className="h-3 w-3" /> {couponCode} applied — {formatPrice(couponDiscount)} off
+                    </p>
+                    <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground hover:text-destructive px-2" onClick={handleRemoveCoupon}>
+                      Remove
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Coupon code"
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value)}
+                      className="text-sm"
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleApplyCoupon(); } }}
+                    />
+                    <Button variant="outline" size="sm" onClick={handleApplyCoupon} disabled={couponLoading}>
+                      <Tag className="h-4 w-4 mr-1" /> {couponLoading ? "..." : "Apply"}
+                    </Button>
+                  </div>
                 )}
 
                 <Separator />

@@ -1,18 +1,10 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { requireAdminContext } from "@/lib/auth/request-context";
 import { createAdminClient } from "@/lib/supabase/admin";
-
-async function requireAdmin() {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  const role = (user.app_metadata?.role as string | undefined) ?? (user.user_metadata?.role as string | undefined);
-  if (role !== "admin") return { ok: false as const, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
-  return { ok: true as const };
-}
+import { sendWelcomeEmail, buildCustomerLink, generateNextCustomerNumber } from "@/lib/b2b-customer";
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdminContext();
   if (!auth.ok) return auth.response;
   const admin = createAdminClient();
   const { searchParams } = new URL(request.url);
@@ -21,27 +13,38 @@ export async function GET(request: Request) {
   let q = (admin as any).from("profiles").select("*").eq("role", "user").order("created_at", { ascending: false });
   if (userType) q = q.eq("user_type", userType);
   const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    console.error("[GET /api/admin/customers] profiles query failed:", error.message, error);
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
 
-  const ids = (data ?? []).map((row) => row.id);
-  const { data: orders } = await admin.from("orders").select("user_id,total").in("user_id", ids);
-  const { data: details } = ids.length > 0
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ids: string[] = ((data ?? []) as any[]).map((row: any) => row.id as string);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: orders, error: ordersError } = ids.length > 0
+    ? await (admin as any).from("orders").select("user_id,total").in("user_id", ids)
+    : { data: [] as Array<{ user_id: string; total: unknown }>, error: null };
+  if (ordersError) console.error("[GET /api/admin/customers] orders query failed:", (ordersError as { message: string }).message);
+
+  const { data: details, error: detailsError } = ids.length > 0
     ? await admin
       .from("b2b_customer_details")
       .select(
-        "user_id, display_name, customer_number, company_name, contact_name, payment_terms, gst_treatment, gstin, billing_attention, billing_address, billing_street2, billing_city, billing_state, billing_country, billing_county, billing_phone, shipping_attention, shipping_address, shipping_street2, shipping_city, shipping_state, shipping_country, shipping_code, shipping_phone"
+        "user_id, display_name, customer_number, company_name, contact_name, payment_terms, gst_treatment, gstin, billing_attention, billing_address, billing_street2, billing_city, billing_state, billing_country, billing_county, billing_phone, shipping_attention, shipping_address, shipping_street2, shipping_city, shipping_state, shipping_country, shipping_code, shipping_phone, zoho_contact_id"
       )
       .in("user_id", ids)
-    : { data: [] as Array<Record<string, unknown>> };
+    : { data: [] as Array<Record<string, unknown>>, error: null };
+  if (detailsError) console.error("[GET /api/admin/customers] b2b_customer_details query failed:", detailsError.message);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: userPrices } = ids.length > 0
-    ? await admin.from("user_product_prices").select("user_id,status").in("user_id", ids)
+    ? await (admin as any).from("user_product_prices").select("user_id,status").in("user_id", ids)
     : { data: [] as Array<{ user_id: string; status: string }> };
 
   const metrics = new Map<string, { orders: number; spent: number }>();
   for (const id of ids) metrics.set(id, { orders: 0, spent: 0 });
-  for (const row of orders ?? []) {
-    const metric = metrics.get(row.user_id as string);
+  for (const row of ((orders ?? []) as Array<{ user_id: string; total: unknown }>)) {
+    const metric = metrics.get(row.user_id);
     if (!metric) continue;
     metric.orders += 1;
     metric.spent += Number(row.total ?? 0);
@@ -50,14 +53,15 @@ export async function GET(request: Request) {
   const detailsByUser = new Map((details ?? []).map((d) => [d.user_id as string, d]));
   const priceCountByUser = new Map<string, { active: number; inactive: number }>();
   for (const id of ids) priceCountByUser.set(id, { active: 0, inactive: 0 });
-  for (const row of userPrices ?? []) {
-    const metric = priceCountByUser.get(row.user_id as string);
+  for (const row of ((userPrices ?? []) as Array<{ user_id: string; status: string }>)) {
+    const metric = priceCountByUser.get(row.user_id);
     if (!metric) continue;
     if (row.status === "inactive") metric.inactive += 1;
     else metric.active += 1;
   }
 
-  const merged = (data ?? []).map((row) => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const merged = ((data ?? []) as any[]).map((row: any) => ({
     ...row,
     details: detailsByUser.get(row.id) ?? null,
     orders_count: metrics.get(row.id)?.orders ?? 0,
@@ -69,7 +73,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireAdminContext();
   if (!auth.ok) return auth.response;
 
   const body = (await request.json()) as {
@@ -146,10 +150,11 @@ export async function POST(request: Request) {
   });
 
   // Save extended B2B details
+  const customerNumber = await generateNextCustomerNumber();
   const details = {
     user_id: userId,
     display_name: body.display_name?.trim() || full_name || null,
-    customer_number: body.customer_number?.trim() || null,
+    customer_number: customerNumber,
     company_name: body.company_name?.trim() || null,
     contact_name: body.contact_name?.trim() || null,
     payment_terms: body.payment_terms?.trim() || "Advance Payment",
@@ -176,5 +181,8 @@ export async function POST(request: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (admin.from("b2b_customer_details").insert(details as unknown as never) as any);
 
-  return NextResponse.json({ data: { id: userId, email, full_name } }, { status: 201 });
+  const detailsLink = buildCustomerLink(userId);
+  void sendWelcomeEmail(email, full_name, password, detailsLink, body.company_name?.trim() ?? null);
+
+  return NextResponse.json({ data: { id: userId, email, full_name, details_link: detailsLink } }, { status: 201 });
 }

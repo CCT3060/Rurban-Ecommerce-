@@ -17,14 +17,15 @@ import { CreditCard, Wallet, ShieldCheck, Lock } from "lucide-react";
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, getSubtotal, clearCart } = useCartStore();
+  const { items, getSubtotal, clearCart, couponCode, couponDiscount } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cod");
 
   const subtotal = getSubtotal();
   const shipping = subtotal >= 999 ? 0 : 49;
-  const tax = Math.round(subtotal * 0.18);
-  const total = subtotal + shipping + tax;
+  const discount = couponDiscount;
+  const tax = Math.round((subtotal - discount) * 0.18);
+  const total = subtotal - discount + shipping + tax;
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +49,7 @@ export default function CheckoutPage() {
         zip: String(formData.get("zip") || ""),
       },
       paymentMethod,
+      couponCode: couponCode ?? undefined,
       notes: String(formData.get("notes") || ""),
     };
 
@@ -191,6 +193,12 @@ export default function CheckoutPage() {
                   <Separator />
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatPrice(subtotal)}</span></div>
+                    {discount > 0 && (
+                      <div className="flex justify-between text-success">
+                        <span>Coupon ({couponCode})</span>
+                        <span>-{formatPrice(discount)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between"><span className="text-muted-foreground">Shipping</span><span className={shipping === 0 ? "text-success" : ""}>{shipping === 0 ? "Free" : formatPrice(shipping)}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Tax (GST 18%)</span><span>{formatPrice(tax)}</span></div>
                   </div>

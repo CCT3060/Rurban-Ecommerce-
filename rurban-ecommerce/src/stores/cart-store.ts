@@ -16,12 +16,16 @@ export interface CartStoreItem {
 interface CartState {
   items: CartStoreItem[];
   isOpen: boolean;
+  couponCode: string | null;
+  couponDiscount: number;
   addItem: (item: CartStoreItem) => void;
   removeItem: (productId: string, variantId: string | null) => void;
   updateQuantity: (productId: string, variantId: string | null, quantity: number) => void;
   clearCart: () => void;
   toggleCart: () => void;
   setCartOpen: (open: boolean) => void;
+  setCoupon: (code: string | null, discount: number) => void;
+  clearCoupon: () => void;
   getItemCount: () => number;
   getSubtotal: () => number;
 }
@@ -31,6 +35,8 @@ export const useCartStore = create<CartState>()(
     (set, get) => ({
       items: [],
       isOpen: false,
+      couponCode: null,
+      couponDiscount: 0,
 
       addItem: (item) => {
         set((state) => {
@@ -71,9 +77,12 @@ export const useCartStore = create<CartState>()(
         }));
       },
 
-      clearCart: () => set({ items: [] }),
+      clearCart: () => set({ items: [], couponCode: null, couponDiscount: 0 }),
       toggleCart: () => set((state) => ({ isOpen: !state.isOpen })),
       setCartOpen: (open) => set({ isOpen: open }),
+
+      setCoupon: (code, discount) => set({ couponCode: code, couponDiscount: discount }),
+      clearCoupon: () => set({ couponCode: null, couponDiscount: 0 }),
 
       getItemCount: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
 

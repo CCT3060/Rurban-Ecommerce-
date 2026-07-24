@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { requireWarehouseAdminContext } from "@/lib/auth/request-context";
 import { generateInviteToken } from "@/lib/invite-token";
 
@@ -20,7 +20,7 @@ function isRateLimited(userId: string): boolean {
 }
 
 // GET /api/warehouse/b2b-invite — generate a time-limited onboarding link for a new B2B customer
-export async function GET() {
+export async function GET(request: NextRequest) {
   const ctx = await requireWarehouseAdminContext();
   if (!ctx.ok) {
     return ctx.response;
@@ -34,7 +34,9 @@ export async function GET() {
   }
 
   const token = generateInviteToken(7, { warehouse_id: ctx.context.warehouseId ?? null }); // valid for 7 days
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001";
+  const proto = request.headers.get("x-forwarded-proto") ?? new URL(request.url).protocol.replace(":", "");
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "localhost:3001";
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? `${proto}://${host}`;
   const link = `${base}/onboarding/register?invite=${token}`;
 
   return NextResponse.json({ link, expiresInDays: 7 });

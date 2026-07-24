@@ -6,7 +6,7 @@ import { generateInviteToken } from "@/lib/invite-token";
 // NOTE: resets on server restart; use a shared store (Redis) for multi-instance deployments.
 const inviteRateLimit = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const RATE_LIMIT_MAX = 10;
+const RATE_LIMIT_MAX = 50;
 
 function isRateLimited(userId: string): boolean {
   const now = Date.now();

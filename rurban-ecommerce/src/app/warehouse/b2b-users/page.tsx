@@ -101,6 +101,28 @@ function toEditForm(user: B2BUser): EditForm {
   };
 }
 
+function copyToClipboard(text: string): void {
+  if (typeof navigator !== "undefined" && navigator.clipboard) {
+    void navigator.clipboard.writeText(text).catch(() => execCommandCopy(text));
+  } else {
+    execCommandCopy(text);
+  }
+}
+
+function execCommandCopy(text: string): void {
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.style.position = "fixed";
+  el.style.top = "0";
+  el.style.left = "0";
+  el.style.opacity = "0";
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+  try { document.execCommand("copy"); } catch { /* ignore */ }
+  document.body.removeChild(el);
+}
+
 function downloadCsv(users: B2BUser[]) {
   const header = "Name,Email,Phone,Status\n";
   const rows = users.map((u) =>
@@ -481,7 +503,8 @@ export default function WarehouseB2BUsersPage() {
               size="sm"
               className="w-full gap-2"
               onClick={() => {
-                void navigator.clipboard.writeText(inviteLink ?? "").then(() => toast.success("Link copied!"));
+                copyToClipboard(inviteLink ?? "");
+                toast.success("Link copied!");
               }}
             >
               <Copy className="h-3.5 w-3.5" /> Copy Link

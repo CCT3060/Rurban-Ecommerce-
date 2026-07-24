@@ -105,6 +105,28 @@ function downloadCsv(users: B2BUser[]) {
   URL.revokeObjectURL(url);
 }
 
+function copyToClipboard(text: string): void {
+  if (typeof navigator !== "undefined" && navigator.clipboard) {
+    void navigator.clipboard.writeText(text).catch(() => execCommandCopy(text));
+  } else {
+    execCommandCopy(text);
+  }
+}
+
+function execCommandCopy(text: string): void {
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.style.position = "fixed";
+  el.style.top = "0";
+  el.style.left = "0";
+  el.style.opacity = "0";
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+  try { document.execCommand("copy"); } catch { /* ignore */ }
+  document.body.removeChild(el);
+}
+
 function toEditForm(user: B2BUser): EditForm {
   return {
     full_name: user.full_name ?? "",
@@ -477,7 +499,8 @@ export default function AdminB2BUsersPage() {
                         <DropdownMenuItem onClick={() => {
                           const token = Buffer.from(u.id).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
                           const link = `${window.location.origin}/onboarding/${token}`;
-                          void navigator.clipboard.writeText(link).then(() => toast.success("Onboarding link copied!"));
+                          copyToClipboard(link);
+                          toast.success("Onboarding link copied!");
                         }}><Link2 className="h-4 w-4 mr-2" /> Copy Link</DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive" onClick={() => setDeleteUser(u)}><Trash2 className="h-4 w-4 mr-2" /> Delete</DropdownMenuItem>
                       </DropdownMenuContent>
@@ -604,7 +627,8 @@ export default function AdminB2BUsersPage() {
               size="sm"
               className="w-full gap-2"
               onClick={() => {
-                void navigator.clipboard.writeText(inviteLink ?? "").then(() => toast.success("Link copied!"));
+                copyToClipboard(inviteLink ?? "");
+                toast.success("Link copied!");
               }}
             >
               <Copy className="h-3.5 w-3.5" /> Copy Link

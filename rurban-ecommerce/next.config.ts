@@ -1,5 +1,27 @@
 import type { NextConfig } from "next";
 
+// Derive the Supabase origin from the configured URL so the CSP / image rules
+// work for both cloud (https://*.supabase.co) and a self-hosted host
+// (e.g. http://<ip>:8000) without hardcoding it.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+let supabaseOrigin = "";
+let supabaseRemotePattern:
+  | { protocol: "http" | "https"; hostname: string; port?: string }
+  | null = null;
+try {
+  if (supabaseUrl) {
+    const u = new URL(supabaseUrl);
+    supabaseOrigin = u.origin;
+    supabaseRemotePattern = {
+      protocol: u.protocol.replace(":", "") as "http" | "https",
+      hostname: u.hostname,
+      port: u.port || undefined,
+    };
+  }
+} catch {
+  // Ignore a malformed URL; fall back to the static allow-list below.
+}
+
 const nextConfig: NextConfig = {
   // Keep pdfkit and its dependencies unbundled so they can resolve
   // font/data files from their actual node_modules location at runtime.
@@ -69,8 +91,8 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // unsafe-inline needed by Next.js runtime
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
-              "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://images.unsplash.com https://via.placeholder.com https://thumbs.dreamstime.com",
-              "connect-src 'self' https://*.supabase.co https://*.supabase.in https://exp.host",
+              `img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://images.unsplash.com https://via.placeholder.com https://thumbs.dreamstime.com${supabaseOrigin ? " " + supabaseOrigin : ""}`,
+              `connect-src 'self' https://*.supabase.co https://*.supabase.in https://exp.host${supabaseOrigin ? " " + supabaseOrigin : ""}`,
               "frame-ancestors 'self'",
               "base-uri 'self'",
               "form-action 'self'",
@@ -102,6 +124,8 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "thumbs.dreamstime.com",
       },
+      // Self-hosted Supabase (derived from NEXT_PUBLIC_SUPABASE_URL, e.g. http://<ip>:8000)
+      ...(supabaseRemotePattern ? [supabaseRemotePattern] : []),
     ],
     dangerouslyAllowSVG: true,
     contentDispositionType: "attachment",

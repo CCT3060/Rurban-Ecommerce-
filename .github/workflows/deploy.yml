@@ -1,0 +1,58 @@
+name: Deploy web app to production (EC2)
+
+# Deploys rurban-ecommerce to the EC2 box on every push to main.
+# The build runs on the server; if it fails, PM2 keeps serving the old build.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rurban-ecommerce/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {} # allow manual "Run workflow" from the Actions tab
+
+# Never run two production deploys at once.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 20m
+          script_stop: true # abort on the first failing command
+          script: |
+            set -euo pipefail
+            REPO_DIR=/var/www/rurban
+            APP_DIR="$REPO_DIR/rurban-ecommerce"
+
+            cd "$REPO_DIR"
+            echo "Fetching latest main..."
+            git fetch --prune origin main
+            BEFORE=$(git rev-parse HEAD)
+            git reset --hard origin/main
+            AFTER=$(git rev-parse HEAD)
+            echo "Deploying ${BEFORE:0:7} -> ${AFTER:0:7}"
+
+            cd "$APP_DIR"
+            # Reinstall dependencies only when the lockfile changed (saves time/RAM).
+            if [ ! -d node_modules ] || ! git diff --quiet "$BEFORE" "$AFTER" -- package-lock.json; then
+              echo "Dependencies changed — running npm ci..."
+              npm ci --no-audit --no-fund
+            else
+              echo "No dependency change — skipping install."
+            fi
+
+            echo "Building..."
+            npm run build
+
+            echo "Reloading PM2..."
+            pm2 reload ecosystem.config.js --update-env
+            pm2 save
+            echo "✓ Deploy complete."

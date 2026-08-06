@@ -23,6 +23,13 @@ interface CartContextValue {
 
 const CartContext = createContext<CartContextValue | null>(null);
 
+/** Merge GST rate from whichever field the API returned (gst_rate or raw DB column) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function withGstRate(product: Product): Product {
+  const rate = product.gst_rate ?? (product as any).intra_state_tax_rate ?? null;
+  return rate === product.gst_rate ? product : { ...product, gst_rate: rate != null ? Number(rate) : null };
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
@@ -82,14 +89,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const addItem = useCallback((product: Product) => {
     setItems(prev => {
       if (product.stock <= 0) return prev; // out of stock
-      const existing = prev.find(i => i.product.id === product.id);
+      const p = withGstRate(product); // normalise gst_rate from whichever field is present
+      const existing = prev.find(i => i.product.id === p.id);
       if (existing) {
-        if (existing.quantity >= product.stock) return prev; // already at stock limit
+        if (existing.quantity >= p.stock) return prev; // already at stock limit
         return prev.map(i =>
-          i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
+          i.product.id === p.id ? { ...i, product: p, quantity: i.quantity + 1 } : i
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      return [...prev, { product: p, quantity: 1 }];
     });
   }, []);
 
@@ -111,11 +119,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const setQty = useCallback((productId: string, qty: number, product: Product) => {
     setItems(prev => {
-      const clamped = Math.max(0, Math.min(qty, product.stock));
+      const p = withGstRate(product);
+      const clamped = Math.max(0, Math.min(qty, p.stock));
       if (clamped === 0) return prev.filter(i => i.product.id !== productId);
       const existing = prev.find(i => i.product.id === productId);
-      if (existing) return prev.map(i => i.product.id === productId ? { ...i, quantity: clamped } : i);
-      return [...prev, { product, quantity: clamped }];
+      if (existing) return prev.map(i => i.product.id === productId ? { ...i, product: p, quantity: clamped } : i);
+      return [...prev, { product: p, quantity: clamped }];
     });
   }, []);
 
@@ -127,13 +136,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
     return sum + price * i.quantity;
   }, 0);
-  // GST total — mirrors the backend: line price × qty × gst_rate%.
-  // Falls back to intra_state_tax_rate (raw DB column) for products cached
-  // before gst_rate was added to the API response.
+  // GST total — line price × qty × gst_rate% (rate is normalised on add/setQty/refresh)
   const totalGst = items.reduce((sum, i) => {
     const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rate = Number(i.product.gst_rate ?? (i.product as any).intra_state_tax_rate ?? 0);
+    const rate = Number(i.product.gst_rate ?? 0);
     return sum + (price * i.quantity * rate) / 100;
   }, 0);
 

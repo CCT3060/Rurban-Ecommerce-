@@ -10,6 +10,7 @@ import {
   TouchableOpacity, Animated,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { usePreventScreenCapture } from 'expo-screen-capture';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { CartProvider, useCart } from './src/context/CartContext';
@@ -421,6 +422,10 @@ configureForegroundNotifications();
 // ─── App Entry ────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // Block screenshots & screen recording app-wide (Android enforces fully via
+  // FLAG_SECURE; iOS cannot block screenshots but prevents screen recording).
+  usePreventScreenCapture();
+
   return (
     <SafeAreaProvider>
       <AuthProvider>

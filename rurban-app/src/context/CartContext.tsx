@@ -13,6 +13,7 @@ interface CartContextValue {
   items: CartItem[];
   totalQty: number;
   totalPrice: number;
+  totalGst: number;
   addItem: (product: Product) => void;
   removeItem: (productId: string) => void;
   setQty: (productId: string, qty: number, product: Product) => void;
@@ -90,9 +91,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
     return sum + price * i.quantity;
   }, 0);
+  // GST total — mirrors the backend: line price × qty × gst_rate%. Falls back to
+  // 0 for products fetched before gst_rate was added.
+  const totalGst = items.reduce((sum, i) => {
+    const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
+    const rate = Number(i.product.gst_rate ?? 0);
+    return sum + (price * i.quantity * rate) / 100;
+  }, 0);
 
   return (
-    <CartContext.Provider value={{ items, totalQty, totalPrice, addItem, removeItem, setQty, clearCart, getQty }}>
+    <CartContext.Provider value={{ items, totalQty, totalPrice, totalGst, addItem, removeItem, setQty, clearCart, getQty }}>
       {children}
     </CartContext.Provider>
   );

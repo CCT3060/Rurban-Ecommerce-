@@ -8,11 +8,11 @@ import { COLORS } from '../lib/theme';
 import { useCart } from '../context/CartContext';
 
 export default function CartScreen({ navigation }: { navigation: any }) {
-  const { items, totalPrice, addItem, removeItem } = useCart();
+  const { items, totalPrice, totalGst, addItem, removeItem } = useCart();
   const insets = useSafeAreaInsets();
 
   const delivery = totalPrice >= 199 ? 0 : 29;
-  const total    = totalPrice + delivery;
+  const total    = totalPrice + totalGst + delivery;
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
@@ -96,6 +96,12 @@ export default function CartScreen({ navigation }: { navigation: any }) {
               <Text style={s.billLabel}>Subtotal</Text>
               <Text style={s.billValue}>Rs.{Math.round(totalPrice)}</Text>
             </View>
+            {totalGst > 0 && (
+              <View style={s.billRow}>
+                <Text style={s.billLabel}>GST</Text>
+                <Text style={s.billValue}>Rs.{Math.round(totalGst)}</Text>
+              </View>
+            )}
             <View style={s.billRow}>
               <Text style={s.billLabel}>Delivery fee</Text>
               <Text style={[s.billValue, delivery === 0 && s.free]}>

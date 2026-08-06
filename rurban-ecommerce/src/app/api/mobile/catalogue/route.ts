@@ -23,6 +23,7 @@ type PriceRow = {
     brand: string | null;
     avg_rating: number;
     review_count: number;
+    intra_state_tax_rate: number | null;
     category_id: string;
     category: { id: string; name: string; slug: string } | null;
     images: { image_url: string; is_primary: boolean }[];
@@ -45,6 +46,7 @@ export type CatalogueCategory = {
     brand: string | null;
     avg_rating: number;
     review_count: number;
+    gst_rate: number;
     image_url: string | null;
   }>;
 };
@@ -72,7 +74,7 @@ export async function GET(request: Request) {
       `custom_price, start_date, end_date,
        product:products!product_id(
          id, name, slug, price, sale_price, stock, status, sku, brand,
-         avg_rating, review_count, category_id,
+         avg_rating, review_count, intra_state_tax_rate, category_id,
          category:categories!category_id(id, name, slug),
          images:product_images(image_url, is_primary)
        )`
@@ -122,6 +124,7 @@ export async function GET(request: Request) {
       brand: p.brand ?? null,
       avg_rating: Number(p.avg_rating ?? 0),
       review_count: Number(p.review_count ?? 0),
+      gst_rate: Number(p.intra_state_tax_rate ?? 0),
       image_url: primaryImage,
     });
   }

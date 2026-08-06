@@ -60,6 +60,7 @@ export interface Product {
   is_new_arrival: boolean;
   avg_rating?: number;
   review_count?: number;
+  gst_rate?: number | null; // GST % (intra-state) synced from Zoho; used for order totals
   images: ProductImage[];
   category?: { name: string; slug: string } | null;
 }

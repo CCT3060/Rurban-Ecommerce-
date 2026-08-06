@@ -20,7 +20,7 @@ const PAY_OPTS: { id: PayMethod; label: string; icon: string; sub: string }[] = 
 ];
 
 export default function CheckoutScreen({ navigation }: { navigation: any }) {
-  const { items, totalPrice, clearCart } = useCart();
+  const { items, totalPrice, totalGst, clearCart } = useCart();
   const { token, user } = useAuth();
   const insets = useSafeAreaInsets();
 
@@ -152,7 +152,7 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
   }, [firstName, lastName, phone, street, city, state, zip]);
 
   const delivery = totalPrice >= 199 ? 0 : 29;
-  const total    = totalPrice + delivery;
+  const total    = totalPrice + totalGst + delivery;
 
   const handleOrder = async () => {
     if (!firstName || !lastName || !phone || !street || !city || !state || !zip) {
@@ -363,11 +363,18 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
             </View>
             {items.map(i => {
               const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
+              const rate = Number(i.product.gst_rate ?? 0);
+              const lineGst = (price * i.quantity * rate) / 100;
               return (
-                <View key={i.product.id} style={s.summaryItem}>
-                  <Text style={s.summaryName} numberOfLines={1}>{i.product.name}</Text>
-                  <Text style={s.summaryQty}>x{i.quantity}</Text>
-                  <Text style={s.summaryPrice}>Rs.{price * i.quantity}</Text>
+                <View key={i.product.id} style={{ marginBottom: 10 }}>
+                  <View style={[s.summaryItem, { marginBottom: 0 }]}>
+                    <Text style={s.summaryName} numberOfLines={1}>{i.product.name}</Text>
+                    <Text style={s.summaryQty}>x{i.quantity}</Text>
+                    <Text style={s.summaryPrice}>Rs.{price * i.quantity}</Text>
+                  </View>
+                  {rate > 0 && (
+                    <Text style={s.summaryGstLine}>+ GST {rate}% = Rs.{lineGst.toFixed(2)}</Text>
+                  )}
                 </View>
               );
             })}
@@ -376,6 +383,12 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
               <Text style={s.summaryGray}>Subtotal</Text>
               <Text style={s.summaryVal}>Rs.{Math.round(totalPrice)}</Text>
             </View>
+            {totalGst > 0 && (
+              <View style={s.summaryRow}>
+                <Text style={s.summaryGray}>GST</Text>
+                <Text style={s.summaryVal}>Rs.{Math.round(totalGst)}</Text>
+              </View>
+            )}
             <View style={s.summaryRow}>
               <Text style={s.summaryGray}>Delivery</Text>
               <Text style={[s.summaryVal, delivery === 0 && { color: COLORS.green }]}>
@@ -450,6 +463,7 @@ const s = StyleSheet.create({
   summaryName: { flex: 1, fontSize: 13, color: COLORS.text },
   summaryQty: { fontSize: 13, color: COLORS.grayLight, marginHorizontal: 8 },
   summaryPrice: { fontSize: 13, fontWeight: '700', color: COLORS.dark },
+  summaryGstLine: { fontSize: 11, color: COLORS.grayLight, marginTop: 2 },
   divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 12 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   summaryGray: { fontSize: 14, color: COLORS.gray },

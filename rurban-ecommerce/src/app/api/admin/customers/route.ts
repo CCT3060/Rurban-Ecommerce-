@@ -82,6 +82,7 @@ export async function POST(request: Request) {
     email?: string;
     phone?: string;
     password?: string;
+    zoho_contact_id?: string;
     // Company
     display_name?: string;
     customer_number?: string;
@@ -114,6 +115,8 @@ export async function POST(request: Request) {
   const email = String(body.email ?? "").trim().toLowerCase();
   const phone = String(body.phone ?? "").trim() || null;
   const password = String(body.password ?? "").trim();
+  // When set, link to an existing Zoho contact instead of creating a new one.
+  const existingZohoContactId = String(body.zoho_contact_id ?? "").trim() || null;
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Valid email is required" }, { status: 400 });
@@ -176,6 +179,8 @@ export async function POST(request: Request) {
     shipping_country: body.shipping_country?.trim() || "India",
     shipping_code: body.shipping_code?.trim() || null,
     shipping_phone: body.shipping_phone?.trim() || null,
+    // Link to an existing Zoho contact when provided (existing-customer flow).
+    zoho_contact_id: existingZohoContactId,
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

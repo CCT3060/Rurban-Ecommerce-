@@ -75,6 +75,7 @@ export async function POST(request: Request) {
     email?: string;
     phone?: string;
     password?: string;
+    zoho_contact_id?: string;
     display_name?: string;
     customer_number?: string;
     company_name?: string;
@@ -104,6 +105,9 @@ export async function POST(request: Request) {
   const email = String(body.email ?? "").trim().toLowerCase();
   const phone = String(body.phone ?? "").trim() || null;
   const password = String(body.password ?? "").trim();
+  // When set, the customer already exists in Zoho Books — link to that contact
+  // instead of creating a new one (prevents duplicate names in Zoho).
+  const existingZohoContactId = String(body.zoho_contact_id ?? "").trim() || null;
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Valid email is required" }, { status: 400 });
@@ -202,14 +206,20 @@ export async function POST(request: Request) {
     shipping_country: body.shipping_country?.trim() || "India",
     shipping_code: body.shipping_code?.trim() || null,
     shipping_phone: body.shipping_phone?.trim() || null,
+    // Link to an existing Zoho contact when provided (existing-customer flow).
+    zoho_contact_id: existingZohoContactId,
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (admin.from("b2b_customer_details").insert(details as unknown as never) as any);
 
-  // Fire-and-forget: sync to Zoho Books and send welcome email
+  // Fire-and-forget: send welcome email. Only CREATE a new Zoho contact when the
+  // customer is NOT already in Zoho — otherwise we linked their existing
+  // zoho_contact_id above and creating one would duplicate the name in Zoho.
   const detailsLink = buildCustomerLink(userId);
-  void syncContactToZoho(email, full_name, phone, details);
+  if (!existingZohoContactId) {
+    void syncContactToZoho(email, full_name, phone, details);
+  }
   void sendWelcomeEmail(email, full_name, password, detailsLink, body.company_name?.trim() ?? null);
 
   return NextResponse.json({ data: { id: userId, email, full_name, details_link: detailsLink } }, { status: 201 });

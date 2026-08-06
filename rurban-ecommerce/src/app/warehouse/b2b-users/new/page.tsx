@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Copy, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, Copy, CheckCircle2, UserPlus, BookMarked } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +30,7 @@ function useLookup(type: string) {
 
 type FormData = {
   full_name: string; email: string; phone: string; password: string;
+  zoho_contact_id: string;
   display_name: string; customer_number: string; company_name: string; contact_name: string;
   payment_terms: string; gst_treatment: string; gstin: string;
   billing_attention: string; billing_address: string; billing_street2: string;
@@ -42,6 +43,7 @@ type FormData = {
 
 const EMPTY: FormData = {
   full_name: "", email: "", phone: "", password: "",
+  zoho_contact_id: "",
   display_name: "", customer_number: "", company_name: "", contact_name: "",
   payment_terms: "Advance Payment", gst_treatment: "Business - Registered", gstin: "",
   billing_attention: "", billing_address: "", billing_street2: "",
@@ -74,6 +76,8 @@ export default function WarehouseNewB2BUserPage() {
   const [form, setForm] = useState<FormData>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [createdLink, setCreatedLink] = useState<string | null>(null);
+  // "choose" = pick new vs existing-in-Zoho; then show the matching form.
+  const [mode, setMode] = useState<"choose" | "new" | "existing">("choose");
 
   const states = useLookup("indian_state");
   const paymentTerms = useLookup("payment_term");
@@ -103,7 +107,11 @@ export default function WarehouseNewB2BUserPage() {
     e.preventDefault();
     if (!form.email || !form.password) { toast.error("Email and password are required"); return; }
     if (form.password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
-    if (form.gstin && !GSTIN_RE.test(form.gstin)) {
+    if (mode === "existing") {
+      if (!form.full_name.trim()) { toast.error("Name is required"); return; }
+      if (!form.zoho_contact_id.trim()) { toast.error("Zoho Book ID is required for an existing customer"); return; }
+    }
+    if (mode === "new" && form.gstin && !GSTIN_RE.test(form.gstin)) {
       toast.warning("GSTIN format looks incorrect, but continuing anyway.");
     }
     setSaving(true);
@@ -128,17 +136,65 @@ export default function WarehouseNewB2BUserPage() {
   const gstItems = Object.fromEntries(gstTreatments.map((g) => [g, g]));
   const paymentItems = Object.fromEntries(paymentTerms.map((p) => [p, p]));
 
+  if (mode === "choose") {
+    return (
+      <div className="max-w-4xl space-y-6">
+        <div className="flex items-center gap-3">
+          <Button type="button" variant="ghost" size="icon" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">Add B2B Customer</h1>
+            <p className="text-sm text-muted-foreground">Is this customer new, or already in Zoho Books?</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => { setForm(EMPTY); setMode("new"); }}
+            className="text-left rounded-xl border bg-card p-6 hover:border-primary hover:shadow-sm transition"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <UserPlus className="h-5 w-5 text-primary" />
+              <span className="font-semibold">New customer</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Create a brand-new customer. A matching contact is created in Zoho Books.
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setForm(EMPTY); setMode("existing"); }}
+            className="text-left rounded-xl border bg-card p-6 hover:border-primary hover:shadow-sm transition"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <BookMarked className="h-5 w-5 text-primary" />
+              <span className="font-semibold">Already in Zoho Books</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Link to an existing Zoho contact by its ID — no duplicate contact is created.
+            </p>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-6 max-w-4xl">
         {/* Header */}
         <div className="flex items-center gap-3">
-        <Button type="button" variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button type="button" variant="ghost" size="icon" onClick={() => setMode("choose")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Add B2B Customer</h1>
-          <p className="text-sm text-muted-foreground">Fill in the customer details to create a B2B account</p>
+          <h1 className="text-2xl font-bold">{mode === "existing" ? "Link Existing Zoho Customer" : "Add B2B Customer"}</h1>
+          <p className="text-sm text-muted-foreground">
+            {mode === "existing"
+              ? "Create an app login and link it to the existing Zoho Books contact"
+              : "Fill in the customer details to create a B2B account"}
+          </p>
         </div>
       </div>
 
@@ -163,6 +219,25 @@ export default function WarehouseNewB2BUserPage() {
         </CardContent>
       </Card>
 
+      {/* ── Existing-customer: Zoho link ─────────────────────── */}
+      {mode === "existing" && (
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base">Zoho Books Link</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Zoho Book ID (Contact / Customer ID)" id="zoho_contact_id" required>
+              <Input id="zoho_contact_id" placeholder="e.g. 460000000012345" value={form.zoho_contact_id} onChange={set("zoho_contact_id")} />
+            </Field>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Find this on the customer&apos;s page in Zoho Books (the numeric ID in the URL). Orders will post to this
+              existing contact, so no duplicate customer is created in Zoho.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {mode === "new" && (<>
       {/* ── Section 2: Company / Contact Info ────────────────── */}
       <Card>
         <CardHeader className="pb-4">
@@ -321,11 +396,13 @@ export default function WarehouseNewB2BUserPage() {
         </CardContent>
       </Card>
 
+      </>)}
+
       {/* Submit */}
       <div className="flex items-center justify-end gap-3 pb-10">
-        <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
+        <Button type="button" variant="outline" onClick={() => setMode("choose")}>Back</Button>
         <Button type="submit" disabled={saving} className="gap-2 min-w-[140px]">
-          {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</> : "Create B2B Customer"}
+          {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</> : (mode === "existing" ? "Link Customer" : "Create B2B Customer")}
         </Button>
       </div>
     </form>

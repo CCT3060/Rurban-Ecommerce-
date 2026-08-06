@@ -91,11 +91,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
     return sum + price * i.quantity;
   }, 0);
-  // GST total — mirrors the backend: line price × qty × gst_rate%. Falls back to
-  // 0 for products fetched before gst_rate was added.
+  // GST total — mirrors the backend: line price × qty × gst_rate%.
+  // Falls back to intra_state_tax_rate (raw DB column) for products cached
+  // before gst_rate was added to the API response.
   const totalGst = items.reduce((sum, i) => {
     const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
-    const rate = Number(i.product.gst_rate ?? 0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rate = Number(i.product.gst_rate ?? (i.product as any).intra_state_tax_rate ?? 0);
     return sum + (price * i.quantity * rate) / 100;
   }, 0);
 

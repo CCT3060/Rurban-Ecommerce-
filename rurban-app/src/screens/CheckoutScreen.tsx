@@ -363,7 +363,8 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
             </View>
             {items.map(i => {
               const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
-              const rate = Number(i.product.gst_rate ?? 0);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const rate = Number(i.product.gst_rate ?? (i.product as any).intra_state_tax_rate ?? 0);
               const lineGst = (price * i.quantity * rate) / 100;
               return (
                 <View key={i.product.id} style={{ marginBottom: 10 }}>

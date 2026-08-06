@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Product, API_BASE } from '../lib/api';
 
@@ -33,58 +33,68 @@ function withGstRate(product: Product): Product {
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  // Restore cart from storage on mount, then refresh product data (prices + GST)
-  // from the API so stale cached items always reflect the current DB values.
+  // Restore cart from storage on mount, normalising gst_rate immediately so the
+  // GST line is correct on the very first render for items that already carry a
+  // tax field. Items missing tax data entirely are healed by the effect below.
   useEffect(() => {
     AsyncStorage.getItem(CART_STORAGE_KEY)
       .then(stored => {
         if (!stored) return;
         const parsed = JSON.parse(stored) as CartItem[];
         if (!Array.isArray(parsed) || parsed.length === 0) return;
-
-        // Show cached data immediately (fast path), normalising gst_rate right away
-        // so totalGst is correct even before the background refresh completes.
         setItems(parsed.map(item => ({ ...item, product: withGstRate(item.product) })));
-
-        // Refresh product data in background to pick up current prices + GST rates
-        const ids = parsed.map(i => i.product.id).join(',');
-        fetch(`${API_BASE}/api/products?ids=${encodeURIComponent(ids)}`)
-          .then(r => r.json())
-          .then((data: { data?: unknown[] }) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const fresh = data.data as any[] | undefined;
-            if (!fresh || fresh.length === 0) return;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const freshMap = new Map<string, any>(fresh.map((p: any) => [p.id, p]));
-            setItems(prev => prev.map(item => {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const fp = freshMap.get(item.product.id) as any;
-              if (!fp) return item;
-              // Merge fresh data; keep cached price if fresh price is 0 (data issue)
-              const freshPrice = fp.sale_price ? Number(fp.sale_price) : Number(fp.price);
-              const cachedPrice = item.product.sale_price ? Number(item.product.sale_price) : Number(item.product.price);
-              return {
-                ...item,
-                product: {
-                  ...item.product,
-                  ...fp,
-                  // Keep cached price if fresh is 0 (avoid showing free items)
-                  price: freshPrice > 0 ? fp.price : item.product.price,
-                  sale_price: freshPrice > 0 ? fp.sale_price : item.product.sale_price,
-                  // Ensure gst_rate is populated from either field
-                  gst_rate: fp.gst_rate ?? fp.intra_state_tax_rate ?? item.product.gst_rate ?? null,
-                } as Product,
-              };
-            }));
-          })
-          .catch(() => {}); // Silently ignore network errors — cached data still shown
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Persist cart to storage whenever it changes
   useEffect(() => {
-    AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items)).catch(() => {});
+    AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items)).catch(() => { });
+  }, [items]);
+
+  // ── Self-healing GST ────────────────────────────────────────────────────────
+  // Any item whose GST rate is still unknown — neither gst_rate nor
+  // intra_state_tax_rate present (e.g. products cached before tax data existed) —
+  // gets its rate fetched fresh from the server and patched in. Runs on every
+  // cart change, so it works regardless of WHEN the stale item was added, not
+  // just at app start. The ref tracks attempted ids to avoid refetch loops, and
+  // products that genuinely have no GST simply stay at 0.
+  const gstHealAttempted = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const missingIds = items
+      .filter(i => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const p = i.product as any;
+        const rateKnown = p.gst_rate != null || p.intra_state_tax_rate != null;
+        return !rateKnown && !gstHealAttempted.current.has(i.product.id);
+      })
+      .map(i => i.product.id);
+
+    if (missingIds.length === 0) return;
+    missingIds.forEach(id => gstHealAttempted.current.add(id));
+
+    fetch(`${API_BASE}/api/products?ids=${encodeURIComponent(missingIds.join(','))}`)
+      .then(r => r.json())
+      .then((data: { data?: unknown[] }) => {
+        const fresh = (data.data ?? []) as unknown[];
+        if (fresh.length === 0) return;
+        const rateById = new Map<string, number>();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fresh as any[]).forEach((p: any) => {
+          const rate = p.gst_rate ?? p.intra_state_tax_rate;
+          if (rate != null) rateById.set(p.id, Number(rate));
+        });
+        if (rateById.size === 0) return;
+        setItems(prev => prev.map(item => {
+          const rate = rateById.get(item.product.id);
+          if (rate == null) return item;
+          return { ...item, product: { ...item.product, gst_rate: rate } };
+        }));
+      })
+      .catch(() => {
+        // Offline / error — un-mark so a later cart change retries the fetch.
+        missingIds.forEach(id => gstHealAttempted.current.delete(id));
+      });
   }, [items]);
 
   const addItem = useCallback((product: Product) => {
@@ -115,7 +125,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clearCart = useCallback(() => {
     setItems([]);
-    AsyncStorage.removeItem(CART_STORAGE_KEY).catch(() => {});
+    AsyncStorage.removeItem(CART_STORAGE_KEY).catch(() => { });
   }, []);
 
   const setQty = useCallback((productId: string, qty: number, product: Product) => {

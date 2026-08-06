@@ -19,12 +19,16 @@ const navItems = [
 export default function WarehouseLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  const handleSignOut = () => {
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = "/api/auth/signout";
-    document.body.appendChild(form);
-    form.submit();
+  const handleSignOut = async () => {
+    // Call the signout API via fetch (not a form submit) so the browser
+    // processes the cleared-cookie response instead of navigating to the raw
+    // JSON at /api/auth/signout, then redirect to the login page.
+    try {
+      await fetch("/api/auth/signout", { method: "POST" });
+    } catch {
+      // Proceed regardless — cookies may already be expired.
+    }
+    window.location.replace("/login");
   };
 
   return (

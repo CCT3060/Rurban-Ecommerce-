@@ -30,6 +30,7 @@ import CartScreen           from './src/screens/CartScreen';
 import CheckoutScreen       from './src/screens/CheckoutScreen';
 import OrderSuccessScreen   from './src/screens/OrderSuccessScreen';
 import OrdersScreen         from './src/screens/OrdersScreen';
+import OrderDetailScreen    from './src/screens/OrderDetailScreen';
 import ProfileScreen        from './src/screens/ProfileScreen';
 import WishlistScreen       from './src/screens/WishlistScreen';
 import AllProductsScreen      from './src/screens/AllProductsScreen';
@@ -40,15 +41,16 @@ import LoginScreen           from './src/screens/LoginScreen';
 import SignupScreen          from './src/screens/SignupScreen';
 import WarehouseDashboardScreen from './src/screens/WarehouseDashboardScreen';
 
-const Tab       = createBottomTabNavigator();
-const HomeStack = createNativeStackNavigator();
-const CatStack  = createNativeStackNavigator();
-const CartStack = createNativeStackNavigator();
-const AuthStack = createNativeStackNavigator();
-const RootStack = createNativeStackNavigator();
-const B2BStack  = createNativeStackNavigator();
-const AIStack   = createNativeStackNavigator();
-const WHStack   = createNativeStackNavigator();
+const Tab         = createBottomTabNavigator();
+const HomeStack   = createNativeStackNavigator();
+const CatStack    = createNativeStackNavigator();
+const CartStack   = createNativeStackNavigator();
+const AuthStack   = createNativeStackNavigator();
+const RootStack   = createNativeStackNavigator();
+const B2BStack    = createNativeStackNavigator();
+const AIStack     = createNativeStackNavigator();
+const WHStack     = createNativeStackNavigator();
+const OrdersStack = createNativeStackNavigator();
 
 // ─── Navigators ───────────────────────────────────────────────────────────────
 
@@ -204,6 +206,17 @@ const vc = StyleSheet.create({
   btnText:   { color: '#fff', fontSize: 13, fontWeight: '800' },
 });
 
+// ─── Orders Stack (list → detail) ────────────────────────────────────────────
+
+function OrdersStackNav() {
+  return (
+    <OrdersStack.Navigator screenOptions={{ headerShown: false }}>
+      <OrdersStack.Screen name="OrdersList"  component={OrdersScreen} />
+      <OrdersStack.Screen name="OrderDetail" component={OrderDetailScreen} />
+    </OrdersStack.Navigator>
+  );
+}
+
 // ─── B2B Catalogue Stack ─────────────────────────────────────────────────────
 
 function B2BCatalogueStack() {
@@ -267,7 +280,7 @@ function B2BTabs() {
     >
       <Tab.Screen name="Catalogue" component={B2BCatalogueStack} />
       <Tab.Screen name="AllItems"  component={AllItemsStackNav} options={{ tabBarLabel: 'All Items' }} />
-      <Tab.Screen name="Orders"    component={OrdersScreen} />
+      <Tab.Screen name="Orders"    component={OrdersStackNav} />
       <Tab.Screen name="Profile"   component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -318,7 +331,7 @@ function MainTabs() {
     >
       <Tab.Screen name="Home"       component={HomeStackNav} />
       <Tab.Screen name="Categories" component={CategoriesStack} />
-      <Tab.Screen name="Orders"     component={OrdersScreen} />
+      <Tab.Screen name="Orders"     component={OrdersStackNav} />
       <Tab.Screen name="Profile"    component={ProfileScreen} />
     </Tab.Navigator>
   );

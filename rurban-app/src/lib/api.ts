@@ -82,6 +82,9 @@ export interface OrderItem {
   quantity: number;
   image_url: string | null;
   variant_info: string | null;
+  hsn_or_sac?: string | null;
+  intra_state_tax_rate?: number | null;
+  zoho_unit?: string | null;
 }
 
 export interface Order {
@@ -92,6 +95,7 @@ export interface Order {
   payment_method: string | null;
   subtotal: number;
   discount: number;
+  tax?: number | null;
   shipping_cost: number;
   total: number;
   shipping_address: Record<string, string> | null;

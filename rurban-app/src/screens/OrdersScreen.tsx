@@ -21,7 +21,7 @@ const STATUS_META: Record<string, { label: string; color: string; icon: string }
 
 type Tab = 'upcoming' | 'completed';
 
-export default function OrdersScreen() {
+export default function OrdersScreen({ navigation }: { navigation: any }) {
   const [tab, setTab] = useState<Tab>('upcoming');
   const [orders, setOrders] = useState<Order[]>([]);
   const [pendingReviews, setPendingReviews] = useState<PendingReview[]>([]);
@@ -151,7 +151,11 @@ export default function OrdersScreen() {
             const names = item.order_items?.map(i => i.name ?? 'Item') ?? [];
             const totalItems = item.order_items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
             return (
-              <View style={[s.card, { borderLeftColor: meta.color, borderLeftWidth: 4 }]}>
+              <TouchableOpacity
+                style={[s.card, { borderLeftColor: meta.color, borderLeftWidth: 4 }]}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('OrderDetail', { order: item })}
+              >
                 {/* ── Top row ── */}
                 <View style={s.cardTop}>
                   <View style={{ flex: 1 }}>
@@ -229,7 +233,7 @@ export default function OrdersScreen() {
                     </TouchableOpacity>
                   ) : null}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           }}
         />
@@ -340,7 +344,7 @@ const s = StyleSheet.create({
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { padding: 14, gap: 14 },
   // Card
-  card: { backgroundColor: COLORS.white, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6 },
+  card: { backgroundColor: COLORS.white, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, overflow: 'hidden' },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 },
   orderNo: { fontSize: 13, fontWeight: '800', color: COLORS.dark, letterSpacing: 0.2 },
   orderDate: { fontSize: 12, color: COLORS.grayLight, marginTop: 2 },

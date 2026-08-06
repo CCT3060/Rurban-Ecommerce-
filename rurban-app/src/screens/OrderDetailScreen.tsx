@@ -214,50 +214,50 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
           <Text style={s.sectionTitle}>Bill Summary</Text>
           <View style={s.summaryBox}>
             <View style={s.summaryRow}>
-              <Text style={s.summaryLabel}>Subtotal</Text>
-              <Text style={s.summaryValue}>Rs.{fmt(Number(order.subtotal))}</Text>
+              <Text style={s.summaryLabel}>Sub Total</Text>
+              <Text style={s.summaryValue}>{fmt(Number(order.subtotal))}</Text>
             </View>
 
-            {/* Per-rate tax breakdown */}
+            {/* Per-rate tax breakdown — CGST + SGST at half the GST rate each */}
             {Array.from(taxGroups.entries()).map(([rate, amounts]) => (
               <React.Fragment key={rate}>
                 <View style={s.summaryRow}>
                   <Text style={s.summaryLabel}>CGST ({rate / 2}%)</Text>
-                  <Text style={s.summaryValue}>Rs.{fmt(amounts.cgst)}</Text>
+                  <Text style={s.summaryValue}>{fmt(amounts.cgst)}</Text>
                 </View>
                 <View style={s.summaryRow}>
                   <Text style={s.summaryLabel}>SGST ({rate / 2}%)</Text>
-                  <Text style={s.summaryValue}>Rs.{fmt(amounts.sgst)}</Text>
+                  <Text style={s.summaryValue}>{fmt(amounts.sgst)}</Text>
                 </View>
               </React.Fragment>
             ))}
 
-            {/* Fallback: use stored tax if no per-item breakdown */}
+            {/* Fallback: use stored tax if per-item breakdown is unavailable */}
             {taxGroups.size === 0 && Number(order.tax ?? 0) > 0 && (
               <View style={s.summaryRow}>
                 <Text style={s.summaryLabel}>GST</Text>
-                <Text style={s.summaryValue}>Rs.{fmt(Number(order.tax))}</Text>
+                <Text style={s.summaryValue}>{fmt(Number(order.tax))}</Text>
               </View>
             )}
 
             {Number(order.discount) > 0 && (
               <View style={s.summaryRow}>
                 <Text style={s.summaryLabel}>Discount</Text>
-                <Text style={[s.summaryValue, { color: COLORS.green }]}>−Rs.{fmt(Number(order.discount))}</Text>
+                <Text style={[s.summaryValue, { color: COLORS.green }]}>−{fmt(Number(order.discount))}</Text>
               </View>
             )}
 
             {Number(order.shipping_cost) > 0 && (
               <View style={s.summaryRow}>
-                <Text style={s.summaryLabel}>Delivery</Text>
-                <Text style={s.summaryValue}>Rs.{fmt(Number(order.shipping_cost))}</Text>
+                <Text style={s.summaryLabel}>Shipping</Text>
+                <Text style={s.summaryValue}>{fmt(Number(order.shipping_cost))}</Text>
               </View>
             )}
 
             <View style={s.divider} />
             <View style={s.summaryRow}>
               <Text style={s.totalLabel}>Total</Text>
-              <Text style={s.totalValue}>Rs.{fmt(Number(order.total))}</Text>
+              <Text style={s.totalValue}>₹{fmt(Number(order.total))}</Text>
             </View>
           </View>
         </View>

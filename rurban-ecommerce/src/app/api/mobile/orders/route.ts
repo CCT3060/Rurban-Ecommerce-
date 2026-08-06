@@ -29,6 +29,7 @@ export async function GET(request: Request) {
       payment_method,
       subtotal,
       discount,
+      tax,
       shipping_cost,
       total,
       shipping_address,
@@ -42,7 +43,10 @@ export async function GET(request: Request) {
         price,
         quantity,
         image_url,
-        variant_info
+        variant_info,
+        hsn_or_sac,
+        intra_state_tax_rate,
+        zoho_unit
       )
     `)
     .eq("user_id", user.id)

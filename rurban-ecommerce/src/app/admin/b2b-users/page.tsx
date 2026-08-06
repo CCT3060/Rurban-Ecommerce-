@@ -161,6 +161,13 @@ export default function AdminB2BUsersPage() {
   const [zohoSyncing, setZohoSyncing] = useState<string | null>(null); // userId being synced
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
+  // "Add B2B User" now first asks new-vs-existing, then either invites or links.
+  const [chooseOpen, setChooseOpen] = useState(false);
+  const [existingOpen, setExistingOpen] = useState(false);
+  const [existingSaving, setExistingSaving] = useState(false);
+  const [existingForm, setExistingForm] = useState({
+    full_name: "", email: "", phone: "", password: "", zoho_contact_id: "",
+  });
   const zohoAbortRef = useRef<AbortController | null>(null);
 
   const syncToZoho = async (userId: string) => {
@@ -217,6 +224,39 @@ export default function AdminB2BUsersPage() {
       toast.error(err instanceof Error ? err.message : "Failed to generate link");
     } finally {
       setInviteLoading(false);
+    }
+  };
+
+  const createExistingCustomer = async () => {
+    const f = existingForm;
+    if (!f.full_name.trim()) { toast.error("Name is required"); return; }
+    if (!f.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) { toast.error("Valid email is required"); return; }
+    if (f.password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
+    if (!f.zoho_contact_id.trim()) { toast.error("Zoho Book ID is required"); return; }
+    setExistingSaving(true);
+    try {
+      const res = await fetch("/api/admin/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: f.full_name.trim(),
+          email: f.email.trim(),
+          phone: f.phone.trim() || undefined,
+          password: f.password,
+          zoho_contact_id: f.zoho_contact_id.trim(),
+          display_name: f.full_name.trim(),
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to create customer");
+      toast.success("Existing customer linked to Zoho contact");
+      setExistingOpen(false);
+      setExistingForm({ full_name: "", email: "", phone: "", password: "", zoho_contact_id: "" });
+      await fetchUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create customer");
+    } finally {
+      setExistingSaving(false);
     }
   };
 
@@ -397,8 +437,8 @@ export default function AdminB2BUsersPage() {
           <Button variant="outline" className="gap-2" onClick={() => downloadCsv(users)} disabled={users.length === 0}>
             <Download className="h-4 w-4" /> Export CSV
           </Button>
-          <Button className="gap-2" onClick={() => void generateInviteLink()} disabled={inviteLoading}>
-            {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Add B2B User
+          <Button className="gap-2" onClick={() => setChooseOpen(true)}>
+            <UserPlus className="h-4 w-4" /> Add B2B User
           </Button>
         </div>
       </div>
@@ -642,6 +682,77 @@ export default function AdminB2BUsersPage() {
               {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}New Link
             </Button>
             <Button size="sm" onClick={() => setInviteLink(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── New vs. existing choice ── */}
+      <Dialog open={chooseOpen} onOpenChange={setChooseOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><UserPlus className="h-5 w-5" /> Add B2B Customer</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Is this customer new, or already in Zoho Books?</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+            <button
+              type="button"
+              onClick={() => { setChooseOpen(false); void generateInviteLink(); }}
+              className="text-left rounded-xl border bg-card p-4 hover:border-primary hover:shadow-sm transition"
+            >
+              <div className="flex items-center gap-2 mb-1"><UserPlus className="h-4 w-4 text-primary" /><span className="font-semibold text-sm">New customer</span></div>
+              <p className="text-xs text-muted-foreground">Send an invite link — they create their own account and fill their details.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setChooseOpen(false); setExistingOpen(true); }}
+              className="text-left rounded-xl border bg-card p-4 hover:border-primary hover:shadow-sm transition"
+            >
+              <div className="flex items-center gap-2 mb-1"><BookOpen className="h-4 w-4 text-primary" /><span className="font-semibold text-sm">Already in Zoho Books</span></div>
+              <p className="text-xs text-muted-foreground">Link to an existing Zoho contact by ID — no duplicate contact is created.</p>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Existing Zoho customer: create login + link ── */}
+      <Dialog open={existingOpen} onOpenChange={(v) => { if (!v) setExistingOpen(false); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5" /> Link Existing Zoho Customer</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Create an app login and link it to the existing Zoho Books contact. No new Zoho contact is created.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Name <span className="text-destructive">*</span></Label>
+              <Input value={existingForm.full_name} placeholder="Raj Kumar" onChange={(e) => setExistingForm((p) => ({ ...p, full_name: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Zoho Book ID <span className="text-destructive">*</span></Label>
+              <Input value={existingForm.zoho_contact_id} placeholder="e.g. 460000000012345" onChange={(e) => setExistingForm((p) => ({ ...p, zoho_contact_id: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email <span className="text-destructive">*</span></Label>
+              <Input type="email" value={existingForm.email} placeholder="raj@company.com" onChange={(e) => setExistingForm((p) => ({ ...p, email: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Phone</Label>
+              <Input value={existingForm.phone} placeholder="+91 98765 43210" onChange={(e) => setExistingForm((p) => ({ ...p, phone: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Password <span className="text-destructive">*</span></Label>
+              <Input type="password" value={existingForm.password} placeholder="Min 6 characters" onChange={(e) => setExistingForm((p) => ({ ...p, password: e.target.value }))} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Find the Zoho Book ID on the customer&apos;s page in Zoho Books (the numeric ID in the URL).
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExistingOpen(false)} disabled={existingSaving}>Cancel</Button>
+            <Button onClick={() => void createExistingCustomer()} disabled={existingSaving} className="gap-2">
+              {existingSaving && <Loader2 className="h-4 w-4 animate-spin" />}Link Customer
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

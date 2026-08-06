@@ -38,6 +38,10 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
+  // Supabase generated types resolve tables to `never` without a generated
+  // schema; use an untyped handle for writes (matches the rest of the codebase).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = admin as any;
   const { data: { user }, error: authError } = await admin.auth.getUser(token);
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -177,12 +181,12 @@ export async function POST(request: Request) {
     return sum + (item.price * item.quantity * rate) / 100;
   }, 0);
 
-  const total = subtotal + totalTax + shippingCost;
+  const total = subtotal + totalTax;
   const paymentMethod = String(body.paymentMethod ?? "cod").trim();
 
   const orderNumber = await generateOrderNumber();
 
-  const { data: order, error: orderError } = await admin
+  const { data: order, error: orderError } = await db
     .from("orders")
     .insert({
       user_id: user.id,
@@ -207,16 +211,16 @@ export async function POST(request: Request) {
 
   // Insert order items
   const itemsWithOrderId = orderItemsPayload.map(i => ({ ...i, order_id: order.id }));
-  const { error: itemsError } = await admin.from("order_items").insert(itemsWithOrderId);
+  const { error: itemsError } = await db.from("order_items").insert(itemsWithOrderId);
   if (itemsError) {
     // Rollback order
-    await admin.from("orders").delete().eq("id", order.id);
+    await db.from("orders").delete().eq("id", order.id);
     return NextResponse.json({ error: itemsError.message }, { status: 500 });
   }
 
   // Decrement stock
   for (const item of lineItems) {
-    await admin.rpc("decrement_stock", { p_product_id: item.productId, p_quantity: item.quantity }).maybeSingle();
+    await db.rpc("decrement_stock", { p_product_id: item.productId, p_quantity: item.quantity }).maybeSingle();
   }
 
   // ── Push notifications ─────────────────────────────────────────────────────

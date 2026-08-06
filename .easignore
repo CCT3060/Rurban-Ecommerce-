@@ -1,0 +1,6 @@
+# Exclude the Next.js web app — not needed for the mobile build
+rurban-ecommerce/
+
+# Exclude any root-level large files
+*.log
+.DS_Store

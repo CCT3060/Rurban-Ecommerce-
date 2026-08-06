@@ -11,12 +11,17 @@ function resolveApiBase(): string {
     Constants.expoConfig?.extra?.apiBase as string | undefined,
   ];
   for (const url of candidates) {
-    if (url && !url.includes("loca.lt") && !url.includes("yourdomain.com")) {
+    if (
+      url &&
+      !url.includes("loca.lt") &&
+      !url.includes("yourdomain.com") &&
+      !url.includes("13.201.185.169") // old EC2 IP, retired — reject stale cached values
+    ) {
       return url. replace(/\/$/, ""); // strip trailing slash
     }
   }
-  // Hardcoded fallback — update this to your machine's LAN IP
-  return "http://10.126.233.75:3000";
+  // Hardcoded fallback — production EC2 Elastic IP.
+  return "http://13.202.18.162";
 }
 
 export const API_BASE: string = resolveApiBase();

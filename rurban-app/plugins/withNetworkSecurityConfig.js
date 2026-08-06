@@ -14,14 +14,10 @@ const withNetworkSecurityConfig = (config) => {
         path.join(xmlDir, 'network_security_config.xml'),
         `<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-  <!-- Allow cleartext (HTTP) for local development servers on the LAN -->
-  <domain-config cleartextTrafficPermitted="true">
-    <domain includeSubdomains="true">localhost</domain>
-    <domain includeSubdomains="true">10.0.2.2</domain>
-    <domain includeSubdomains="true">192.168.1.33</domain>
-    <domain includeSubdomains="true">10.126.233.75</domain>
-  </domain-config>
-  <base-config cleartextTrafficPermitted="false">
+  <!-- Allow cleartext (HTTP) traffic to all hosts.
+       Android <domain> elements do not support raw IP addresses.
+       Switch to HTTPS + a domain name to re-enable restrictions. -->
+  <base-config cleartextTrafficPermitted="true">
     <trust-anchors>
       <certificates src="system" />
     </trust-anchors>

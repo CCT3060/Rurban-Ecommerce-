@@ -1,0 +1,27 @@
+# ── Exclude the Next.js web app (not needed for mobile build) ─────────────────
+../rurban-ecommerce/
+../rurban-ecommerce/**
+
+# ── Android build artifacts and caches ────────────────────────────────────────
+android/build/
+android/.gradle/
+android/app/build/
+android/app/.cxx/
+android/.kotlin/
+
+# ── Expo / Metro caches ────────────────────────────────────────────────────────
+.expo/
+.expo-shared/
+dist/
+web-build/
+node_modules/
+
+# ── Logs and debug files ───────────────────────────────────────────────────────
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# ── OS files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

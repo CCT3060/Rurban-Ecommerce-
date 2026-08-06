@@ -45,7 +45,7 @@
       "eas": {
         "projectId": "014ecbf1-5096-4b4c-9b03-93c18c88b18b"
       },
-      "apiBase": "http://10.126.233.75:3000"
+      "apiBase": "http://13.202.18.162"
     }
   }
 }

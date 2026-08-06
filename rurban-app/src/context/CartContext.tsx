@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Product } from '../lib/api';
+import { Product, API_BASE } from '../lib/api';
 
 const CART_STORAGE_KEY = '@rurban_cart';
 
@@ -26,14 +26,50 @@ const CartContext = createContext<CartContextValue | null>(null);
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  // Restore cart from storage on mount
+  // Restore cart from storage on mount, then refresh product data (prices + GST)
+  // from the API so stale cached items always reflect the current DB values.
   useEffect(() => {
     AsyncStorage.getItem(CART_STORAGE_KEY)
       .then(stored => {
-        if (stored) {
-          const parsed = JSON.parse(stored) as CartItem[];
-          if (Array.isArray(parsed)) setItems(parsed);
-        }
+        if (!stored) return;
+        const parsed = JSON.parse(stored) as CartItem[];
+        if (!Array.isArray(parsed) || parsed.length === 0) return;
+
+        // Show cached data immediately (fast path)
+        setItems(parsed);
+
+        // Refresh product data in background to pick up current prices + GST rates
+        const ids = parsed.map(i => i.product.id).join(',');
+        fetch(`${API_BASE}/api/products?ids=${encodeURIComponent(ids)}`)
+          .then(r => r.json())
+          .then((data: { data?: unknown[] }) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const fresh = data.data as any[] | undefined;
+            if (!fresh || fresh.length === 0) return;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const freshMap = new Map<string, any>(fresh.map((p: any) => [p.id, p]));
+            setItems(prev => prev.map(item => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const fp = freshMap.get(item.product.id) as any;
+              if (!fp) return item;
+              // Merge fresh data; keep cached price if fresh price is 0 (data issue)
+              const freshPrice = fp.sale_price ? Number(fp.sale_price) : Number(fp.price);
+              const cachedPrice = item.product.sale_price ? Number(item.product.sale_price) : Number(item.product.price);
+              return {
+                ...item,
+                product: {
+                  ...item.product,
+                  ...fp,
+                  // Keep cached price if fresh is 0 (avoid showing free items)
+                  price: freshPrice > 0 ? fp.price : item.product.price,
+                  sale_price: freshPrice > 0 ? fp.sale_price : item.product.sale_price,
+                  // Ensure gst_rate is populated from either field
+                  gst_rate: fp.gst_rate ?? fp.intra_state_tax_rate ?? item.product.gst_rate ?? null,
+                } as Product,
+              };
+            }));
+          })
+          .catch(() => {}); // Silently ignore network errors — cached data still shown
       })
       .catch(() => {});
   }, []);

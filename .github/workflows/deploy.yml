@@ -26,7 +26,8 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 20m
-          script_stop: true # abort on the first failing command
+          # Note: abort-on-error is handled by `set -euo pipefail` in the script
+          # below (the `script_stop` input was removed in appleboy/ssh-action v1.2.2).
           script: |
             set -euo pipefail
             REPO_DIR=/var/www/rurban

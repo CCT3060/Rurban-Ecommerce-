@@ -53,47 +53,50 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [items]);
 
   // ── Self-healing GST ────────────────────────────────────────────────────────
-  // Any item whose GST rate is still unknown — neither gst_rate nor
-  // intra_state_tax_rate present (e.g. products cached before tax data existed) —
-  // gets its rate fetched fresh from the server and patched in. Runs on every
-  // cart change, so it works regardless of WHEN the stale item was added, not
-  // just at app start. The ref tracks attempted ids to avoid refetch loops, and
-  // products that genuinely have no GST simply stay at 0.
-  const gstHealAttempted = useRef<Set<string>>(new Set());
+  // Any item whose GST rate is still unknown — gst_rate is null/undefined AND no
+  // intra_state_tax_rate (e.g. products cached before tax data existed, or a
+  // product object added from a screen that didn't carry the tax field) — gets
+  // its rate fetched fresh from the server and patched in. Runs on every cart
+  // change, so removing and re-adding an item heals it again correctly.
+  //
+  // The ref only guards against duplicate CONCURRENT fetches (in-flight), it is
+  // NOT a permanent block — that's what previously broke re-adds. Once a rate is
+  // resolved we write a real number (0 for genuinely tax-free products) so the
+  // item stops matching "missing" and never loops.
+  const gstFetchInFlight = useRef<Set<string>>(new Set());
   useEffect(() => {
     const missingIds = items
       .filter(i => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const p = i.product as any;
         const rateKnown = p.gst_rate != null || p.intra_state_tax_rate != null;
-        return !rateKnown && !gstHealAttempted.current.has(i.product.id);
+        return !rateKnown && !gstFetchInFlight.current.has(i.product.id);
       })
       .map(i => i.product.id);
 
     if (missingIds.length === 0) return;
-    missingIds.forEach(id => gstHealAttempted.current.add(id));
+    missingIds.forEach(id => gstFetchInFlight.current.add(id));
 
     fetch(`${API_BASE}/api/products?ids=${encodeURIComponent(missingIds.join(','))}`)
       .then(r => r.json())
       .then((data: { data?: unknown[] }) => {
-        const fresh = (data.data ?? []) as unknown[];
-        if (fresh.length === 0) return;
         const rateById = new Map<string, number>();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fresh as any[]).forEach((p: any) => {
+        ((data.data ?? []) as any[]).forEach((p: any) => {
           const rate = p.gst_rate ?? p.intra_state_tax_rate;
-          if (rate != null) rateById.set(p.id, Number(rate));
+          rateById.set(p.id, rate != null ? Number(rate) : 0);
         });
-        if (rateById.size === 0) return;
         setItems(prev => prev.map(item => {
-          const rate = rateById.get(item.product.id);
-          if (rate == null) return item;
+          if (!missingIds.includes(item.product.id)) return item;
+          // Resolve to the fetched rate, or 0 if tax-free / not returned. Writing
+          // a number (even 0) marks it resolved so it won't re-trigger.
+          const rate = rateById.get(item.product.id) ?? 0;
           return { ...item, product: { ...item.product, gst_rate: rate } };
         }));
       })
-      .catch(() => {
-        // Offline / error — un-mark so a later cart change retries the fetch.
-        missingIds.forEach(id => gstHealAttempted.current.delete(id));
+      .catch(() => { }) // Offline / error — item retries on next cart change.
+      .finally(() => {
+        missingIds.forEach(id => gstFetchInFlight.current.delete(id));
       });
   }, [items]);
 

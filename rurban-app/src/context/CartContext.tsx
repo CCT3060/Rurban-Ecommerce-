@@ -42,8 +42,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const parsed = JSON.parse(stored) as CartItem[];
         if (!Array.isArray(parsed) || parsed.length === 0) return;
 
-        // Show cached data immediately (fast path)
-        setItems(parsed);
+        // Show cached data immediately (fast path), normalising gst_rate right away
+        // so totalGst is correct even before the background refresh completes.
+        setItems(parsed.map(item => ({ ...item, product: withGstRate(item.product) })));
 
         // Refresh product data in background to pick up current prices + GST rates
         const ids = parsed.map(i => i.product.id).join(',');
@@ -136,10 +137,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
     return sum + price * i.quantity;
   }, 0);
-  // GST total — line price × qty × gst_rate% (rate is normalised on add/setQty/refresh)
+  // GST total — line price × qty × gst_rate%.
+  // withGstRate() normalises on load/add/setQty, but keep intra_state_tax_rate
+  // as a last-resort fallback for any item that bypassed normalisation.
   const totalGst = items.reduce((sum, i) => {
     const price = i.product.sale_price ? Number(i.product.sale_price) : Number(i.product.price);
-    const rate = Number(i.product.gst_rate ?? 0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rate = Number(i.product.gst_rate ?? (i.product as any).intra_state_tax_rate ?? 0);
     return sum + (price * i.quantity * rate) / 100;
   }, 0);
 

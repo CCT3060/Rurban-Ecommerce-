@@ -151,8 +151,7 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
     ));
   }, [firstName, lastName, phone, street, city, state, zip]);
 
-  const delivery = totalPrice >= 199 ? 0 : 29;
-  const total    = totalPrice + totalGst + delivery;
+  const total = totalPrice + totalGst;
 
   const handleOrder = async () => {
     if (!firstName || !lastName || !phone || !street || !city || !state || !zip) {
@@ -390,12 +389,6 @@ export default function CheckoutScreen({ navigation }: { navigation: any }) {
                 <Text style={s.summaryVal}>Rs.{Math.round(totalGst)}</Text>
               </View>
             )}
-            <View style={s.summaryRow}>
-              <Text style={s.summaryGray}>Delivery</Text>
-              <Text style={[s.summaryVal, delivery === 0 && { color: COLORS.green }]}>
-                {delivery === 0 ? 'FREE' : `Rs.${delivery}`}
-              </Text>
-            </View>
             <View style={[s.summaryRow, { marginTop: 6 }]}>
               <Text style={s.totalLabel}>Total</Text>
               <Text style={s.totalVal}>Rs.{Math.round(total)}</Text>

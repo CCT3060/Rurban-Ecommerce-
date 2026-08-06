@@ -38,10 +38,8 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
-  // Supabase generated types resolve tables to `never` without a generated
-  // schema; use an untyped handle for writes (matches the rest of the codebase).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = admin as any;
+  const db = admin as any; // Supabase generated types resolve orders/order_items to `never`; cast once here
   const { data: { user }, error: authError } = await admin.auth.getUser(token);
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -181,7 +179,7 @@ export async function POST(request: Request) {
     return sum + (item.price * item.quantity * rate) / 100;
   }, 0);
 
-  const total = subtotal + totalTax;
+  const total = subtotal + totalTax + shippingCost;
   const paymentMethod = String(body.paymentMethod ?? "cod").trim();
 
   const orderNumber = await generateOrderNumber();

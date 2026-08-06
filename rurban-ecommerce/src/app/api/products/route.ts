@@ -28,5 +28,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ data: data ?? [] });
+  // Map DB column → mobile-expected field so cart GST calculation works
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapped = (data ?? []).map((p: any) => ({
+    ...p,
+    gst_rate: p.intra_state_tax_rate != null ? Number(p.intra_state_tax_rate) : null,
+  }));
+
+  return NextResponse.json({ data: mapped });
 }

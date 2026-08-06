@@ -11,8 +11,7 @@ export default function CartScreen({ navigation }: { navigation: any }) {
   const { items, totalPrice, totalGst, addItem, removeItem } = useCart();
   const insets = useSafeAreaInsets();
 
-  const delivery = totalPrice >= 199 ? 0 : 29;
-  const total    = totalPrice + totalGst + delivery;
+  const total = totalPrice + totalGst;
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
@@ -102,18 +101,6 @@ export default function CartScreen({ navigation }: { navigation: any }) {
                 <Text style={s.billValue}>Rs.{Math.round(totalGst)}</Text>
               </View>
             )}
-            <View style={s.billRow}>
-              <Text style={s.billLabel}>Delivery fee</Text>
-              <Text style={[s.billValue, delivery === 0 && s.free]}>
-                {delivery === 0 ? 'FREE' : `Rs.${delivery}`}
-              </Text>
-            </View>
-            {delivery > 0 && (
-              <View style={s.freeHintRow}>
-                <Ionicons name="information-circle-outline" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
-                <Text style={s.freeHint}>Add Rs.{199 - Math.round(totalPrice)} more for free delivery</Text>
-              </View>
-            )}
             <View style={s.divider} />
             <View style={s.billRow}>
               <Text style={s.totalLabel}>Total</Text>
@@ -189,11 +176,6 @@ const s = StyleSheet.create({
   billLabel: { fontSize: 14, color: COLORS.gray },
   billValue: { fontSize: 14, fontWeight: '700', color: COLORS.dark },
   free: { color: COLORS.green, fontWeight: '800' },
-  freeHintRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primaryLight,
-    borderRadius: 8, padding: 8, marginBottom: 10,
-  },
-  freeHint: { fontSize: 12, color: COLORS.primary, flex: 1 },
   divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 10 },
   totalLabel: { fontSize: 16, fontWeight: '800', color: COLORS.dark },
   totalValue: { fontSize: 18, fontWeight: '900', color: COLORS.primary },

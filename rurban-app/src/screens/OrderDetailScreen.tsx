@@ -53,7 +53,12 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
 
   const meta = STATUS_META[order.status] ?? STATUS_META['pending'];
 
-  /* ── Tax breakdown grouped by rate (CGST + SGST) ── */
+  /* ── Tax breakdown grouped by rate (CGST + SGST) ──
+     Preferred path: per-item intra_state_tax_rate, grouped by rate.
+     Fallback path: if items don't carry a rate (e.g. older orders, or the
+     orders API hasn't been redeployed yet), back the tax amount out of the
+     order totals and synthesise a single CGST/SGST group so the breakdown
+     still shows — never a silent 0 when the total clearly includes GST. */
   const taxGroups = new Map<number, { cgst: number; sgst: number }>();
   (order.order_items ?? []).forEach(item => {
     const rate = item.intra_state_tax_rate ?? 0;
@@ -66,6 +71,21 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
       sgst: existing.sgst + (lineTotal * halfRate) / 100,
     });
   });
+
+  // How much tax the order actually carries: prefer stored tax, else derive
+  // from totals (total = subtotal + tax + shipping − discount).
+  const subtotalNum = Number(order.subtotal) || 0;
+  const storedTax = Number(order.tax ?? 0);
+  const derivedTax = Number(order.total) - subtotalNum - Number(order.shipping_cost ?? 0) + Number(order.discount ?? 0);
+  const totalTaxAmount = storedTax > 0 ? storedTax : Math.max(0, derivedTax);
+
+  // No per-item rates but the order does carry tax → synthesise one group.
+  // Effective GST% ≈ tax / subtotal; CGST = SGST = half each.
+  if (taxGroups.size === 0 && totalTaxAmount > 0.005 && subtotalNum > 0) {
+    const effRate = Math.round((totalTaxAmount / subtotalNum) * 100);
+    taxGroups.set(effRate, { cgst: totalTaxAmount / 2, sgst: totalTaxAmount / 2 });
+  }
+
   const totalTax = Array.from(taxGroups.values()).reduce((s, t) => s + t.cgst + t.sgst, 0);
 
   /* ── Shipping address ── */
@@ -232,14 +252,6 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
               </React.Fragment>
             ))}
 
-            {/* Fallback: use stored tax if per-item breakdown is unavailable */}
-            {taxGroups.size === 0 && Number(order.tax ?? 0) > 0 && (
-              <View style={s.summaryRow}>
-                <Text style={s.summaryLabel}>GST</Text>
-                <Text style={s.summaryValue}>{fmt(Number(order.tax))}</Text>
-              </View>
-            )}
-
             {Number(order.discount) > 0 && (
               <View style={s.summaryRow}>
                 <Text style={s.summaryLabel}>Discount</Text>
@@ -254,8 +266,7 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
               </View>
             )}
 
-            <View style={s.divider} />
-            <View style={s.summaryRow}>
+            <View style={s.totalRow}>
               <Text style={s.totalLabel}>Total</Text>
               <Text style={s.totalValue}>₹{fmt(Number(order.total))}</Text>
             </View>
@@ -344,13 +355,33 @@ const s = StyleSheet.create({
   itemGst: { fontSize: 11, color: COLORS.gray, marginTop: 3 },
 
   /* Summary */
-  summaryBox: { gap: 8 },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  summaryLabel: { fontSize: 13, color: COLORS.gray },
-  summaryValue: { fontSize: 13, fontWeight: '600', color: COLORS.dark },
-  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 4 },
-  totalLabel: { fontSize: 16, fontWeight: '800', color: COLORS.dark },
-  totalValue: { fontSize: 18, fontWeight: '900', color: COLORS.primary },
+  summaryBox: { 
+    borderWidth: 1, 
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    marginTop: 4
+  },
+  summaryRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0'
+  },
+  summaryLabel: { fontSize: 13, color: COLORS.dark },
+  summaryValue: { fontSize: 13, color: COLORS.dark },
+  totalRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  totalLabel: { fontSize: 15, fontWeight: '700', color: '#000' },
+  totalValue: { fontSize: 15, fontWeight: '700', color: '#000' },
 
   /* Notes */
   notesBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: COLORS.bg, borderRadius: 12, padding: 12 },

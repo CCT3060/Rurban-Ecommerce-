@@ -1,7 +1,35 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../lib/api';
+
+// Exchange a refresh token for a fresh access token. Module-level (no hooks) so
+// both the launch-restore flow and the authenticated refresh path can use it.
+// Returns null on any failure (network error, or an invalid/expired refresh
+// token) — callers decide how to treat null.
+async function requestRefresh(
+  refreshToken: string,
+  timeoutMs = 8000,
+): Promise<{ access_token: string; refresh_token?: string } | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${API_BASE}/api/mobile/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json.access_token) return null;
+    return { access_token: json.access_token, refresh_token: json.refresh_token };
+  } catch {
+    return null;
+  }
+}
 
 export interface AuthUser {
   id: string;
@@ -48,8 +76,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   // Holds current refresh token in memory to avoid repeated secure store reads
   const refreshTokenRef = useRef<string | null>(null);
+  // When the access token was last refreshed (ms epoch) — throttles foreground refreshes
+  const lastRefreshAtRef = useRef<number>(0);
 
-  // Restore session on launch
+  // Restore session on launch, proactively refreshing the access token.
+  //
+  // The stored access token may have expired while the app was closed (e.g.
+  // opened again a day or two later). Authenticated screens fetch with whatever
+  // token is in context, so if we restored a stale token they'd silently load
+  // empty (no products) even though the user is still "logged in". Refreshing
+  // here — before the app renders past the loading spinner — guarantees screens
+  // mount with a valid token. If the refresh fails (offline, or still valid), we
+  // fall back to the stored token rather than forcing a logout.
   useEffect(() => {
     (async () => {
       try {
@@ -59,11 +97,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(STORAGE_KEY_USER),
         ]);
         if (storedToken && storedUser) {
-          setToken(storedToken);
-          if (storedRefresh) refreshTokenRef.current = storedRefresh;
           const parsedUser = JSON.parse(storedUser) as AuthUser;
           if (!parsedUser.user_type) parsedUser.user_type = 'b2c';
           setUser(parsedUser);
+          if (storedRefresh) refreshTokenRef.current = storedRefresh;
+
+          let activeToken = storedToken;
+          if (storedRefresh) {
+            const refreshed = await requestRefresh(storedRefresh);
+            if (refreshed) {
+              activeToken = refreshed.access_token;
+              await tokenStore.setItem(STORAGE_KEY_TOKEN, refreshed.access_token);
+              if (refreshed.refresh_token) {
+                await tokenStore.setItem(STORAGE_KEY_REFRESH_TOKEN, refreshed.refresh_token);
+                refreshTokenRef.current = refreshed.refresh_token;
+              }
+              lastRefreshAtRef.current = Date.now();
+            }
+          }
+          setToken(activeToken);
         }
       } catch {
         // ignore storage errors
@@ -83,6 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(t);
     setUser(u);
     if (rt) refreshTokenRef.current = rt;
+    lastRefreshAtRef.current = Date.now();
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -135,27 +188,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshAccessToken = useCallback(async (): Promise<string | null> => {
     const rt = refreshTokenRef.current;
     if (!rt) return null;
-    try {
-      const res = await fetch(`${API_BASE}/api/mobile/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: rt }),
-      });
-      if (!res.ok) return null;
-      const json = await res.json();
-      if (!json.access_token) return null;
-      // Persist the new tokens; preserve current user object
-      await tokenStore.setItem(STORAGE_KEY_TOKEN, json.access_token);
-      if (json.refresh_token) {
-        await tokenStore.setItem(STORAGE_KEY_REFRESH_TOKEN, json.refresh_token);
-        refreshTokenRef.current = json.refresh_token;
-      }
-      setToken(json.access_token);
-      return json.access_token;
-    } catch {
-      return null;
+    const refreshed = await requestRefresh(rt);
+    if (!refreshed) return null;
+    // Persist the new tokens; preserve current user object
+    await tokenStore.setItem(STORAGE_KEY_TOKEN, refreshed.access_token);
+    if (refreshed.refresh_token) {
+      await tokenStore.setItem(STORAGE_KEY_REFRESH_TOKEN, refreshed.refresh_token);
+      refreshTokenRef.current = refreshed.refresh_token;
     }
+    setToken(refreshed.access_token);
+    lastRefreshAtRef.current = Date.now();
+    return refreshed.access_token;
   }, []);
+
+  // Refresh the access token when the app returns to the foreground after being
+  // backgrounded for a while (throttled to 15 min). Covers the case where the
+  // app is left open across days — the token would otherwise expire in the
+  // background and screens would fail their next fetch.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active') return;
+      if (!refreshTokenRef.current) return;
+      if (Date.now() - lastRefreshAtRef.current < 15 * 60 * 1000) return;
+      void refreshAccessToken();
+    });
+    return () => sub.remove();
+  }, [refreshAccessToken]);
 
   // authFetch — like fetch(), but auto-refreshes JWT on 401 and retries once.
   // Use this for all authenticated API calls in the app.

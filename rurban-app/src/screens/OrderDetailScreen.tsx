@@ -259,13 +259,6 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
               </View>
             )}
 
-            {Number(order.shipping_cost) > 0 && (
-              <View style={s.summaryRow}>
-                <Text style={s.summaryLabel}>Shipping</Text>
-                <Text style={s.summaryValue}>{fmt(Number(order.shipping_cost))}</Text>
-              </View>
-            )}
-
             <View style={s.totalRow}>
               <Text style={s.totalLabel}>Total</Text>
               <Text style={s.totalValue}>₹{fmt(Number(order.total))}</Text>

@@ -18,9 +18,8 @@ export default function CartPage() {
   const [couponLoading, setCouponLoading] = useState(false);
 
   const subtotal = getSubtotal();
-  const shipping = subtotal >= 999 ? 0 : 49;
   const discount = couponDiscount;
-  const total = subtotal - discount + shipping;
+  const total = subtotal - discount;
 
   const handleApplyCoupon = async () => {
     const code = couponInput.trim().toUpperCase();
@@ -182,12 +181,6 @@ export default function CartPage() {
                       <span>-{formatPrice(discount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Shipping</span>
-                    <span className={shipping === 0 ? "text-success font-medium" : "font-medium"}>
-                      {shipping === 0 ? "Free" : formatPrice(shipping)}
-                    </span>
-                  </div>
                 </div>
 
                 <Separator />
@@ -196,12 +189,6 @@ export default function CartPage() {
                   <span className="font-semibold">Total</span>
                   <span className="text-xl font-bold text-primary">{formatPrice(total)}</span>
                 </div>
-
-                {shipping > 0 && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    Add {formatPrice(999 - subtotal)} more for free shipping
-                  </p>
-                )}
 
                 <Link href="/checkout" className="block">
                   <Button className="w-full rounded-full gap-2" size="lg">

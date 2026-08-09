@@ -210,7 +210,8 @@ export default function WarehouseOrderDetailPage() {
 
   const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
   const totalTax = Array.from(taxGroups.values()).reduce((s, t) => s + t.cgst + t.sgst, 0);
-  const grandTotal = Number(order.subtotal) + totalTax + Number(order.shipping_cost) - Number(order.discount);
+  // Shipping is not charged — excluded from the grand total.
+  const grandTotal = Number(order.subtotal) + totalTax - Number(order.discount);
 
   // Parse requested delivery date from notes
   const deliveryDate = (() => {
@@ -462,13 +463,6 @@ export default function WarehouseOrderDetailPage() {
               <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
                 <span>Discount</span>
                 <span className="font-mono text-green-700">−{fmt(Number(order.discount))}</span>
-              </div>
-            )}
-
-            {Number(order.shipping_cost) > 0 && (
-              <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
-                <span>Shipping</span>
-                <span className="font-mono">{fmt(Number(order.shipping_cost))}</span>
               </div>
             )}
 

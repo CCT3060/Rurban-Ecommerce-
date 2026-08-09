@@ -171,7 +171,8 @@ export async function POST(request: Request) {
     });
   }
 
-  const shippingCost = subtotal >= 199 ? 0 : 29;
+  // Shipping is not charged — kept as 0 so the stored column and totals are clean.
+  const shippingCost = 0;
 
   // Calculate total tax (CGST + SGST = intra_state_tax_rate applied to line total)
   const totalTax = orderItemsPayload.reduce((sum, item) => {

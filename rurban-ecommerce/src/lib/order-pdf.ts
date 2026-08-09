@@ -308,8 +308,9 @@ export async function generateOrderSummaryPdf(order: PdfOrderData): Promise<Buff
 
     /* ── 5. FOOTER: notes + totals ────────────────────────────────────────── */
     const totalTax = Array.from(taxGroups.values()).reduce((s, t) => s + t.cgst + t.sgst, 0);
+    // Shipping is not charged — excluded from the grand total.
     const grandTotal = Number(order.subtotal || subtotalCalc) + totalTax
-      + Number(order.shipping_cost ?? 0) - Number(order.discount ?? 0);
+      - Number(order.discount ?? 0);
 
     // If remaining page space < 80pt, add a new page
     const PAGE_H = 841.89;
@@ -339,7 +340,6 @@ export async function generateOrderSummaryPdf(order: PdfOrderData): Promise<Buff
       addTotalRow(`CGST (${rate / 2}%)`, fmt(amounts.cgst));
       addTotalRow(`SGST (${rate / 2}%)`, fmt(amounts.sgst));
     });
-    if (Number(order.shipping_cost) > 0) addTotalRow("Shipping", fmt(Number(order.shipping_cost)));
     if (Number(order.discount) > 0) addTotalRow("Discount", `-${fmt(Number(order.discount))}`);
     addTotalRow("Total", `₹${fmt(grandTotal)}`, true);
 

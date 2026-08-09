@@ -222,7 +222,8 @@ export default function OrderDetailPage() {
     (s, t) => s + t.cgst + t.sgst,
     0
   );
-  const grandTotal = Number(order.subtotal) + totalTax + Number(order.shipping_cost) - Number(order.discount);
+  // Shipping is not charged — excluded from the grand total.
+  const grandTotal = Number(order.subtotal) + totalTax - Number(order.discount);
 
   return (
     <>
@@ -494,14 +495,6 @@ export default function OrderDetailPage() {
               <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
                 <span>Discount</span>
                 <span className="font-mono text-green-700">−{fmt(Number(order.discount))}</span>
-              </div>
-            )}
-
-            {/* Shipping */}
-            {Number(order.shipping_cost) > 0 && (
-              <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
-                <span>Shipping</span>
-                <span className="font-mono">{fmt(Number(order.shipping_cost))}</span>
               </div>
             )}
 

@@ -251,7 +251,6 @@ export default async function AccountOrdersPage() {
               );
               const subtotal = toAmount(order.subtotal);
               const discount = toAmount(order.discount);
-              const shipping = toAmount(order.shipping_cost);
               const tax = toAmount(order.tax);
               const total = toAmount(order.total);
               const address = order.shipping_address;
@@ -357,10 +356,6 @@ export default async function AccountOrdersPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Discount</span>
                           <span>-{formatPrice(discount)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Shipping</span>
-                          <span>{shipping === 0 ? "Free" : formatPrice(shipping)}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Tax</span>

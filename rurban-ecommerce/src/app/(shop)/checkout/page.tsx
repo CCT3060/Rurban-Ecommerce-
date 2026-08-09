@@ -22,10 +22,9 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState("cod");
 
   const subtotal = getSubtotal();
-  const shipping = subtotal >= 999 ? 0 : 49;
   const discount = couponDiscount;
   const tax = Math.round((subtotal - discount) * 0.18);
-  const total = subtotal - discount + shipping + tax;
+  const total = subtotal - discount + tax;
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,7 +198,6 @@ export default function CheckoutPage() {
                         <span>-{formatPrice(discount)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between"><span className="text-muted-foreground">Shipping</span><span className={shipping === 0 ? "text-success" : ""}>{shipping === 0 ? "Free" : formatPrice(shipping)}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Tax (GST 18%)</span><span>{formatPrice(tax)}</span></div>
                   </div>
                   <Separator />

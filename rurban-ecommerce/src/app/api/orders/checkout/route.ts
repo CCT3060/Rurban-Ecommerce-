@@ -277,7 +277,8 @@ export async function POST(request: Request) {
   }
   // ─────────────────────────────────────────────────────────────────────────
 
-  const shippingCost = subtotal >= 999 ? 0 : 49;
+  // Shipping is not charged — kept as 0 so the stored column and totals are clean.
+  const shippingCost = 0;
   const taxableAmount = Math.max(0, subtotal - couponDiscountAmount);
   const tax = Number((taxableAmount * 0.18).toFixed(2));
   const total = Number((taxableAmount + shippingCost + tax).toFixed(2));

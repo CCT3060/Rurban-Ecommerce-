@@ -72,11 +72,15 @@ type EditForm = {
   payment_terms: string;
   gst_treatment: string;
   gstin: string;
+  billing_address: string;
   billing_city: string;
   billing_state: string;
   billing_phone: string;
+  shipping_address: string;
+  shipping_street2: string;
   shipping_city: string;
   shipping_state: string;
+  shipping_code: string;
   shipping_phone: string;
 };
 
@@ -92,11 +96,15 @@ function toEditForm(user: B2BUser): EditForm {
     payment_terms: user.details?.payment_terms ?? "",
     gst_treatment: user.details?.gst_treatment ?? "",
     gstin: user.details?.gstin ?? "",
+    billing_address: user.details?.billing_address ?? "",
     billing_city: user.details?.billing_city ?? "",
     billing_state: user.details?.billing_state ?? "",
     billing_phone: user.details?.billing_phone ?? "",
+    shipping_address: user.details?.shipping_address ?? "",
+    shipping_street2: user.details?.shipping_street2 ?? "",
     shipping_city: user.details?.shipping_city ?? "",
     shipping_state: user.details?.shipping_state ?? "",
+    shipping_code: user.details?.shipping_code ?? "",
     shipping_phone: user.details?.shipping_phone ?? "",
   };
 }
@@ -239,11 +247,15 @@ export default function WarehouseB2BUsersPage() {
           payment_terms: editForm.payment_terms || null,
           gst_treatment: editForm.gst_treatment || null,
           gstin: editForm.gstin || null,
+          billing_address: editForm.billing_address || null,
           billing_city: editForm.billing_city || null,
           billing_state: editForm.billing_state || null,
           billing_phone: editForm.billing_phone || null,
+          shipping_address: editForm.shipping_address || null,
+          shipping_street2: editForm.shipping_street2 || null,
           shipping_city: editForm.shipping_city || null,
           shipping_state: editForm.shipping_state || null,
+          shipping_code: editForm.shipping_code || null,
           shipping_phone: editForm.shipping_phone || null,
         }),
       });
@@ -468,12 +480,15 @@ export default function WarehouseB2BUsersPage() {
             <div className="space-y-3">
               <div className="space-y-1">
                 <p className="text-xs uppercase text-muted-foreground">Billing</p>
-                <p>{selectedUser?.details?.billing_city || "-"}, {selectedUser?.details?.billing_state || "-"}</p>
+                {selectedUser?.details?.billing_address && <p>{selectedUser.details.billing_address}</p>}
+                <p>{[selectedUser?.details?.billing_city, selectedUser?.details?.billing_state].filter(Boolean).join(", ") || "-"}</p>
                 <p>{selectedUser?.details?.billing_phone || "-"}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs uppercase text-muted-foreground">Shipping</p>
-                <p>{selectedUser?.details?.shipping_city || "-"}, {selectedUser?.details?.shipping_state || "-"}</p>
+                {selectedUser?.details?.shipping_address && <p>{selectedUser.details.shipping_address}</p>}
+                {selectedUser?.details?.shipping_street2 && <p>{selectedUser.details.shipping_street2}</p>}
+                <p>{[selectedUser?.details?.shipping_city, selectedUser?.details?.shipping_state, selectedUser?.details?.shipping_code].filter(Boolean).join(", ") || "-"}</p>
                 <p>{selectedUser?.details?.shipping_phone || "-"}</p>
               </div>
             </div>
@@ -496,11 +511,15 @@ export default function WarehouseB2BUsersPage() {
             <div className="space-y-1.5"><Label>Payment Terms</Label><Input value={editForm?.payment_terms ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, payment_terms: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>GST Treatment</Label><Input value={editForm?.gst_treatment ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, gst_treatment: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>GSTIN</Label><Input value={editForm?.gstin ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, gstin: e.target.value } : p))} /></div>
+            <div className="space-y-1.5 sm:col-span-2"><Label>Billing Address</Label><Input value={editForm?.billing_address ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, billing_address: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Billing City</Label><Input value={editForm?.billing_city ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, billing_city: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Billing State</Label><Input value={editForm?.billing_state ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, billing_state: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Billing Phone</Label><Input value={editForm?.billing_phone ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, billing_phone: e.target.value } : p))} /></div>
+            <div className="space-y-1.5 sm:col-span-2"><Label>Shipping Address</Label><Input value={editForm?.shipping_address ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, shipping_address: e.target.value } : p))} /></div>
+            <div className="space-y-1.5 sm:col-span-2"><Label>Shipping Street 2</Label><Input value={editForm?.shipping_street2 ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, shipping_street2: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Shipping City</Label><Input value={editForm?.shipping_city ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, shipping_city: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Shipping State</Label><Input value={editForm?.shipping_state ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, shipping_state: e.target.value } : p))} /></div>
+            <div className="space-y-1.5"><Label>Shipping Pincode</Label><Input value={editForm?.shipping_code ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, shipping_code: e.target.value } : p))} /></div>
             <div className="space-y-1.5"><Label>Shipping Phone</Label><Input value={editForm?.shipping_phone ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, shipping_phone: e.target.value } : p))} /></div>
           </div>
           <DialogFooter>

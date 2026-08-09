@@ -38,6 +38,14 @@ type Address = {
   state?: string;
   pincode?: string;
   country?: string;
+  /* mobile checkout keys */
+  firstName?: string;
+  lastName?: string;
+  street?: string;
+  zip?: string;
+  line1?: string;
+  line2?: string;
+  postal_code?: string;
 };
 
 type OrderDetail = {
@@ -99,11 +107,15 @@ function fmt(n: number) {
 
 function addrBlock(a: Address | null): string[] {
   if (!a) return [];
+  const name = a.full_name ?? ([a.firstName, a.lastName].filter(Boolean).join(" ") || undefined);
+  const line1 = a.address_line1 ?? a.line1 ?? a.street;
+  const line2 = a.address_line2 ?? a.line2;
+  const pincode = a.pincode ?? a.postal_code ?? a.zip;
   return [
-    a.full_name,
-    a.address_line1,
-    a.address_line2,
-    [a.city, a.state, a.pincode].filter(Boolean).join(" "),
+    name,
+    line1,
+    line2,
+    [a.city, a.state, pincode].filter(Boolean).join(" "),
     a.country,
     a.phone ? `Ph: ${a.phone}` : null,
   ].filter(Boolean) as string[];

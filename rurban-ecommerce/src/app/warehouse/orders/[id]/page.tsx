@@ -40,6 +40,11 @@ type Address = {
   address_line1?: string;
   address_line2?: string;
   pincode?: string;
+  /* mobile checkout keys */
+  firstName?: string;
+  lastName?: string;
+  street?: string;
+  zip?: string;
 };
 
 type OrderDetail = {
@@ -99,11 +104,12 @@ function fmt(n: number) {
 
 function addrBlock(a: Address | null): string[] {
   if (!a) return [];
-  const line1 = a.line1 ?? a.address_line1;
+  const name = a.full_name ?? ([a.firstName, a.lastName].filter(Boolean).join(" ") || undefined);
+  const line1 = a.line1 ?? a.address_line1 ?? a.street;
   const line2 = a.line2 ?? a.address_line2;
-  const pincode = a.postal_code ?? a.pincode;
+  const pincode = a.postal_code ?? a.pincode ?? a.zip;
   return [
-    a.full_name,
+    name,
     line1,
     line2,
     [a.city, a.state, pincode].filter(Boolean).join(" "),

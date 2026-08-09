@@ -192,8 +192,11 @@ export async function generateOrderSummaryPdf(order: PdfOrderData): Promise<Buff
     if (order.customer_email) deliverLines.push(order.customer_email);
     if (order.customer_phone) deliverLines.push(`Ph: ${order.customer_phone}`);
     if (addr) {
-      if (addr.street || addr.address_line1) deliverLines.push(addr.street ?? addr.address_line1 ?? "");
-      const cityLine = [addr.city, addr.state, addr.pincode ?? addr.zip].filter(Boolean).join(" ");
+      const line1 = addr.street ?? addr.address_line1 ?? addr.line1;
+      const line2 = addr.address_line2 ?? addr.line2;
+      if (line1) deliverLines.push(line1);
+      if (line2) deliverLines.push(line2);
+      const cityLine = [addr.city, addr.state, addr.pincode ?? addr.zip ?? addr.postal_code].filter(Boolean).join(" ");
       if (cityLine) deliverLines.push(cityLine);
     }
 

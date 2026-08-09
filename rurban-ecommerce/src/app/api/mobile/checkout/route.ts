@@ -94,16 +94,21 @@ export async function POST(request: Request) {
   // Fetch custom prices for B2B users
   const { data: customPricesData } = await admin
     .from("user_product_prices")
-    .select("product_id, custom_price")
+    .select("product_id, custom_price, start_date, end_date")
     .eq("user_id", user.id)
     .eq("status", "active")
     .in("product_id", productIds);
 
+  // Only apply a custom price that is within its validity window. An expired
+  // price (end_date in the past) must NOT be charged — the base price applies.
+  const today = new Date().toISOString().split("T")[0];
+  const customPriceMap = new Map<string, number>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const customPriceMap = new Map<string, number>(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ((customPricesData ?? []) as any[]).map((row: any) => [row.product_id as string, Number(row.custom_price)])
-  );
+  for (const row of ((customPricesData ?? []) as any[])) {
+    const startOk = !row.start_date || row.start_date <= today;
+    const endOk = !row.end_date || row.end_date >= today;
+    if (startOk && endOk) customPriceMap.set(row.product_id as string, Number(row.custom_price));
+  }
 
   const { data: productsData, error: productsError } = await admin
     .from("products")

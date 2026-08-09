@@ -610,7 +610,7 @@ export default function AdminB2BUsersPage() {
       </Dialog>
 
       <Dialog open={!!editUser && !!editForm} onOpenChange={(v) => { if (!v) { setEditUser(null); setEditForm(null); } }}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Edit Customer</DialogTitle></DialogHeader>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 py-2">
             <div className="space-y-1.5"><Label>Full Name</Label><Input value={editForm?.full_name ?? ""} onChange={(e) => setEditForm((p) => (p ? { ...p, full_name: e.target.value } : p))} /></div>

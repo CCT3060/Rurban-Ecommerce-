@@ -6,6 +6,8 @@ type UserPriceRow = {
   id: string;
   custom_price: number;
   status: string;
+  start_date: string | null;
+  end_date: string | null;
   created_at: string;
   updated_at: string;
   user: { id: string; full_name: string | null; email: string; phone: string | null } | null;
@@ -56,7 +58,7 @@ export async function GET(request: Request) {
   let query = admin
     .from("user_product_prices")
     .select(
-      `id, custom_price, status, created_at, updated_at,
+      `id, custom_price, status, start_date, end_date, created_at, updated_at,
        user:profiles!user_id(id, full_name, email, phone),
        product:products!product_id(id, name, sku, price, sale_price, category_id,
          category:categories!category_id(id, name))`,

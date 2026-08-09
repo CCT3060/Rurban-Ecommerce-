@@ -33,7 +33,7 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-muted/30 flex">
-      <aside className="hidden lg:flex w-64 flex-col border-r bg-card">
+      <aside className="hidden lg:flex w-64 flex-col border-r bg-card sticky top-0 h-screen self-start">
         <div className="h-16 flex items-center gap-2 border-b px-4 shrink-0">
           <Building2 className="h-5 w-5 text-primary" />
           <p className="font-semibold">Warehouse Panel</p>

@@ -717,12 +717,24 @@ export default function WarehouseUserPricesPage() {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <Badge
-                                    variant="secondary"
-                                    className={`text-[10px] border-0 ${r.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
-                                  >
-                                    {r.status}
-                                  </Badge>
+                                  {(() => {
+                                    const todayStr = new Date().toISOString().split("T")[0];
+                                    const expired = r.status === "active" && !!r.end_date && r.end_date < todayStr;
+                                    const notStarted = r.status === "active" && !!r.start_date && r.start_date > todayStr;
+                                    const label = expired ? "expired" : notStarted ? "scheduled" : r.status;
+                                    const cls = expired
+                                      ? "bg-amber-100 text-amber-700"
+                                      : notStarted
+                                        ? "bg-blue-100 text-blue-700"
+                                        : r.status === "active"
+                                          ? "bg-green-100 text-green-700"
+                                          : "bg-gray-100 text-gray-500";
+                                    return (
+                                      <Badge variant="secondary" className={`text-[10px] border-0 ${cls}`}>
+                                        {label}
+                                      </Badge>
+                                    );
+                                  })()}
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                                   {r.start_date || r.end_date

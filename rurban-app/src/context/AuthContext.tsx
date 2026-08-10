@@ -6,12 +6,16 @@ import { API_BASE } from '../lib/api';
 
 // Exchange a refresh token for a fresh access token. Module-level (no hooks) so
 // both the launch-restore flow and the authenticated refresh path can use it.
-// Returns null on any failure (network error, or an invalid/expired refresh
-// token) — callers decide how to treat null.
-async function requestRefresh(
-  refreshToken: string,
-  timeoutMs = 8000,
-): Promise<{ access_token: string; refresh_token?: string } | null> {
+// The result distinguishes three cases so callers can react correctly:
+//   'ok'      — refreshed; new tokens returned
+//   'invalid' — the server rejected the refresh token (dead/expired) → sign out
+//   'error'   — network/timeout, token status unknown → keep the current session
+type RefreshResult =
+  | { status: 'ok'; access_token: string; refresh_token?: string }
+  | { status: 'invalid' }
+  | { status: 'error' };
+
+async function requestRefresh(refreshToken: string, timeoutMs = 8000): Promise<RefreshResult> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -22,12 +26,14 @@ async function requestRefresh(
       signal: controller.signal,
     });
     clearTimeout(timer);
-    if (!res.ok) return null;
+    // Server reached and it rejected the token → genuinely invalid.
+    if (!res.ok) return { status: 'invalid' };
     const json = await res.json();
-    if (!json.access_token) return null;
-    return { access_token: json.access_token, refresh_token: json.refresh_token };
+    if (!json.access_token) return { status: 'invalid' };
+    return { status: 'ok', access_token: json.access_token, refresh_token: json.refresh_token };
   } catch {
-    return null;
+    // Could not reach the server (offline/timeout) — do NOT treat as invalid.
+    return { status: 'error' };
   }
 }
 
@@ -102,20 +108,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(parsedUser);
           if (storedRefresh) refreshTokenRef.current = storedRefresh;
 
-          let activeToken = storedToken;
+          // Proactively refresh so the access token is valid and products load.
+          // The user is NEVER logged out automatically — only an explicit logout
+          // ends the session. If refresh fails (offline or token rejected) we keep
+          // the stored token and the periodic/foreground refreshers keep retrying.
           if (storedRefresh) {
             const refreshed = await requestRefresh(storedRefresh);
-            if (refreshed) {
-              activeToken = refreshed.access_token;
+            if (refreshed.status === 'ok') {
               await tokenStore.setItem(STORAGE_KEY_TOKEN, refreshed.access_token);
               if (refreshed.refresh_token) {
                 await tokenStore.setItem(STORAGE_KEY_REFRESH_TOKEN, refreshed.refresh_token);
                 refreshTokenRef.current = refreshed.refresh_token;
               }
               lastRefreshAtRef.current = Date.now();
+              setToken(refreshed.access_token);
+            } else {
+              setToken(storedToken);
             }
+          } else {
+            setToken(storedToken);
           }
-          setToken(activeToken);
         }
       } catch {
         // ignore storage errors
@@ -189,7 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const rt = refreshTokenRef.current;
     if (!rt) return null;
     const refreshed = await requestRefresh(rt);
-    if (!refreshed) return null;
+    if (refreshed.status !== 'ok') return null;
     // Persist the new tokens; preserve current user object
     await tokenStore.setItem(STORAGE_KEY_TOKEN, refreshed.access_token);
     if (refreshed.refresh_token) {
@@ -202,9 +214,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Refresh the access token when the app returns to the foreground after being
-  // backgrounded for a while (throttled to 15 min). Covers the case where the
-  // app is left open across days — the token would otherwise expire in the
-  // background and screens would fail their next fetch.
+  // backgrounded for a while (throttled to 15 min). Covers reopening the app
+  // after it was closed/backgrounded — the token is refreshed before screens
+  // fetch, so the user keeps seeing products without re-logging in.
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
       if (state !== 'active') return;
@@ -213,6 +225,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       void refreshAccessToken();
     });
     return () => sub.remove();
+  }, [refreshAccessToken]);
+
+  // Keep the session alive during long continuous use. Every 5 min we check and,
+  // if it's been >40 min since the last refresh (access tokens live ~1h), refresh
+  // in the background. Combined with the launch + foreground refreshers this keeps
+  // the user logged in indefinitely — they only leave by tapping Sign Out.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!refreshTokenRef.current) return;
+      if (Date.now() - lastRefreshAtRef.current < 40 * 60 * 1000) return;
+      void refreshAccessToken();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(id);
   }, [refreshAccessToken]);
 
   // authFetch — like fetch(), but auto-refreshes JWT on 401 and retries once.
@@ -225,16 +250,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await fetch(url, { ...options, headers });
     if (res.status !== 401) return res;
 
-    // Token expired — attempt silent refresh
+    // Token expired — attempt a silent refresh and retry once. On failure we do
+    // NOT log the user out; the session stays and the periodic/foreground
+    // refreshers will recover it. Only an explicit Sign Out ends the session.
     const newToken = await refreshAccessToken();
-    if (!newToken) {
-      // Refresh failed; log the user out so they can re-authenticate
-      await logout();
-      return res;
-    }
+    if (!newToken) return res;
     headers.set('Authorization', `Bearer ${newToken}`);
     return fetch(url, { ...options, headers });
-  }, [token, refreshAccessToken, logout]);
+  }, [token, refreshAccessToken]);
 
   const updateUser = useCallback((updates: Partial<AuthUser>) => {
     setUser(prev => {

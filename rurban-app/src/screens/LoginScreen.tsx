@@ -34,10 +34,7 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {/* Logo */}
           <View style={s.logoWrap}>
-            <View style={s.logoCircle}>
-              <Ionicons name="storefront" size={40} color={COLORS.primary} />
-            </View>
-            <Text style={s.logoText}>Rurban</Text>
+            <Image source={require('../../assets/rurban.png')} style={s.logoImage} resizeMode="contain" />
             <Text style={s.tagline}>Fresh groceries delivered fast</Text>
           </View>
 
@@ -113,11 +110,7 @@ const s = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 32 },
   logoWrap: { alignItems: 'center', marginBottom: 36 },
-  logoCircle: {
-    width: 88, height: 88, borderRadius: 44,
-    backgroundColor: COLORS.primaryLight, justifyContent: 'center', alignItems: 'center',
-    marginBottom: 16,
-  },
+  logoImage: { width: 120, height: 120, marginBottom: 8 },
   logoText: { fontSize: 32, fontWeight: '900', color: COLORS.primary, letterSpacing: -0.5 },
   tagline: { fontSize: 14, color: COLORS.gray, marginTop: 4 },
   card: {

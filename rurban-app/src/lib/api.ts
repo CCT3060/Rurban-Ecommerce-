@@ -102,7 +102,18 @@ export interface Order {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  zoho_invoice_number?: string | null;
+  invoice_pdf_path?: string | null;      // present ⇒ an invoice is available
+  signed_invoice_status?: string | null; // 'uploaded' | 'approved' | null
   order_items: OrderItem[];
+}
+
+export interface OrderInvoiceInfo {
+  available: boolean;
+  invoice_number?: string | null;
+  invoice_url?: string | null;        // short-lived signed URL to download
+  signed_invoice_status?: string | null;
+  signed_invoice_url?: string | null; // short-lived signed URL to the customer's upload
 }
 
 export interface PendingReview {
@@ -218,3 +229,30 @@ export const submitReview = (
   token: string,
   data: { product_id: string; rating: number; title?: string; comment?: string }
 ) => authFetch<{ id: string; rating: number }>('/api/mobile/reviews', token, 'POST', data);
+
+// ─── Invoices ──────────────────────────────────────────────────────────────────
+export const fetchOrderInvoice = (token: string, orderId: string) =>
+  authFetch<OrderInvoiceInfo>(`/api/mobile/orders/${orderId}/invoice`, token);
+
+/** Upload the customer's signed invoice copy (a picked PDF or image). */
+export async function uploadSignedInvoice(
+  token: string,
+  orderId: string,
+  file: { uri: string; name: string; type: string }
+): Promise<{ data?: { signed_invoice_status: string }; error?: string }> {
+  try {
+    const form = new FormData();
+    // React Native's FormData file shape
+    form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+    const res = await fetch(`${API_BASE}/api/mobile/orders/${orderId}/invoice`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const json = await res.json();
+    if (!res.ok) return { error: json.error ?? 'Upload failed' };
+    return { data: json.data };
+  } catch {
+    return { error: 'Network error. Please try again.' };
+  }
+}

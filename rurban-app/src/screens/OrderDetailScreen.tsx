@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
+  Linking, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { COLORS } from '../lib/theme';
-import { Order } from '../lib/api';
+import { Order, OrderInvoiceInfo, fetchOrderInvoice, uploadSignedInvoice } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 
 /* ─── Status config ─────────────────────────────────────────────────────────── */
 const STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
@@ -37,6 +40,53 @@ function formatDate(d: string) {
 export default function OrderDetailScreen({ route, navigation }: { route: any; navigation: any }) {
   const order: Order = route.params?.order;
   const insets = useSafeAreaInsets();
+  const { token } = useAuth();
+
+  // ── Invoice state ──────────────────────────────────────────────────────────
+  const hasInvoice = !!(order?.invoice_pdf_path || order?.zoho_invoice_number);
+  const [invoice, setInvoice] = useState<OrderInvoiceInfo | null>(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const loadInvoice = useCallback(async () => {
+    if (!token || !order?.id || !hasInvoice) return;
+    setInvoiceLoading(true);
+    const res = await fetchOrderInvoice(token, order.id);
+    setInvoiceLoading(false);
+    if (res.data) setInvoice(res.data);
+  }, [token, order?.id, hasInvoice]);
+
+  useEffect(() => { void loadInvoice(); }, [loadInvoice]);
+
+  const openUrl = (url?: string | null) => {
+    if (!url) { Alert.alert('Not available', 'The file link is not ready. Pull to refresh.'); return; }
+    Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open the file.'));
+  };
+
+  const handleUploadSigned = async () => {
+    if (!token || !order?.id) return;
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true,
+      });
+      if (picked.canceled || !picked.assets?.[0]) return;
+      const asset = picked.assets[0];
+      setUploading(true);
+      const res = await uploadSignedInvoice(token, order.id, {
+        uri: asset.uri,
+        name: asset.name ?? `signed-${order.order_number}.pdf`,
+        type: asset.mimeType ?? 'application/pdf',
+      });
+      setUploading(false);
+      if (res.error) { Alert.alert('Upload failed', res.error); return; }
+      Alert.alert('Uploaded', 'Your signed invoice has been submitted.');
+      await loadInvoice();
+    } catch {
+      setUploading(false);
+      Alert.alert('Error', 'Could not upload the file.');
+    }
+  };
 
   if (!order) {
     return (
@@ -266,6 +316,68 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
           </View>
         </View>
 
+        {/* ── Invoice ── */}
+        {hasInvoice && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Invoice</Text>
+
+            <View style={s.invoiceRow}>
+              <Ionicons name="document-text-outline" size={22} color={COLORS.primary} style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.invoiceName}>Tax Invoice</Text>
+                {(invoice?.invoice_number ?? order.zoho_invoice_number) && (
+                  <Text style={s.invoiceMeta}>{invoice?.invoice_number ?? order.zoho_invoice_number}</Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={s.invoiceBtn}
+                activeOpacity={0.85}
+                onPress={() => openUrl(invoice?.invoice_url)}
+                disabled={invoiceLoading}
+              >
+                {invoiceLoading
+                  ? <ActivityIndicator size="small" color={COLORS.primary} />
+                  : <><Ionicons name="download-outline" size={15} color={COLORS.primary} style={{ marginRight: 5 }} />
+                      <Text style={s.invoiceBtnText}>Download</Text></>}
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.invoiceDivider} />
+
+            {/* Signed copy */}
+            {invoice?.signed_invoice_status === 'uploaded' || order.signed_invoice_status === 'uploaded' ? (
+              <View style={s.invoiceRow}>
+                <Ionicons name="checkmark-circle" size={20} color={COLORS.green} style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.invoiceName}>Signed copy uploaded</Text>
+                  <Text style={s.invoiceMeta}>Awaiting review</Text>
+                </View>
+                {invoice?.signed_invoice_url && (
+                  <TouchableOpacity style={s.invoiceBtn} activeOpacity={0.85} onPress={() => openUrl(invoice.signed_invoice_url)}>
+                    <Ionicons name="eye-outline" size={15} color={COLORS.primary} style={{ marginRight: 5 }} />
+                    <Text style={s.invoiceBtnText}>View</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <>
+                <Text style={s.invoiceHint}>Download the invoice, sign it, then upload the signed copy here.</Text>
+                <TouchableOpacity
+                  style={s.uploadBtn}
+                  activeOpacity={0.88}
+                  onPress={handleUploadSigned}
+                  disabled={uploading}
+                >
+                  {uploading
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <><Ionicons name="cloud-upload-outline" size={17} color="#fff" style={{ marginRight: 7 }} />
+                        <Text style={s.uploadBtnText}>Upload Signed Invoice</Text></>}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+
         {/* ── Notes ── */}
         {order.notes && (
           <View style={s.section}>
@@ -379,6 +491,23 @@ const s = StyleSheet.create({
   /* Notes */
   notesBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: COLORS.bg, borderRadius: 12, padding: 12 },
   notesText: { flex: 1, fontSize: 13, color: COLORS.gray, lineHeight: 19 },
+
+  /* Invoice */
+  invoiceRow: { flexDirection: 'row', alignItems: 'center' },
+  invoiceName: { fontSize: 14, fontWeight: '700', color: COLORS.dark },
+  invoiceMeta: { fontSize: 12, color: COLORS.grayLight, marginTop: 1 },
+  invoiceBtn: {
+    flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: COLORS.primary,
+    borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: COLORS.primaryLight,
+  },
+  invoiceBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+  invoiceDivider: { height: 1, backgroundColor: COLORS.border, marginVertical: 14 },
+  invoiceHint: { fontSize: 12, color: COLORS.gray, marginBottom: 12, lineHeight: 17 },
+  uploadBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.primary, borderRadius: 12, height: 46,
+  },
+  uploadBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 
   /* Error */
   errorWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },

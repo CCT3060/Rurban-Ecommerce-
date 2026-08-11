@@ -155,7 +155,6 @@ export default function ProductCard({
             {product.name}
           </h3>
         </Link>
-        <div className="flex-1" />
 
         {/* Rating */}
         <div className="flex items-center gap-1 mb-2">

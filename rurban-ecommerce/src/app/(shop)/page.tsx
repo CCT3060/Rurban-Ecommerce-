@@ -409,7 +409,11 @@ export default async function HomePage() {
             </section>
           );
 
-          const productRailSections = curatedProductSections.map((productSection) => (
+          const productRailSections = curatedProductSections
+            // Don't render a section that has no products — empty placeholder
+            // boxes just clutter the page (especially on mobile).
+            .filter((productSection) => productSection.products.length > 0)
+            .map((productSection) => (
             <section
               key={`${section.id}-${productSection.id}`}
               className="border-t border-border/25 bg-white py-7 md:py-9"
@@ -421,22 +425,16 @@ export default async function HomePage() {
                   href={productSection.href}
                 />
 
-                {productSection.products.length === 0 ? (
-                  <div className="mt-4 rounded-2xl border border-border/50 bg-muted/10 p-6 text-center text-sm text-muted-foreground">
-                    No products available for this section yet.
-                  </div>
-                ) : (
-                  <div className="mt-5 flex gap-3 overflow-x-auto pb-3 snap-x snap-mandatory hide-scrollbar md:gap-4">
-                    {productSection.products.map((product) => (
-                      <div
-                        key={`${productSection.id}-${product.id}`}
-                        className="min-w-[160px] max-w-[220px] shrink-0 snap-start sm:min-w-[190px]"
-                      >
-                        <ProductCard product={product} compact />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="mt-5 flex gap-3 overflow-x-auto pb-3 snap-x snap-mandatory hide-scrollbar md:gap-4">
+                  {productSection.products.map((product) => (
+                    <div
+                      key={`${productSection.id}-${product.id}`}
+                      className="w-[46vw] min-w-[150px] max-w-[210px] shrink-0 snap-start sm:w-auto sm:min-w-[190px]"
+                    >
+                      <ProductCard product={product} compact />
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
           ));

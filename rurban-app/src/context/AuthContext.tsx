@@ -195,22 +195,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  // Attempt a silent token refresh using the stored Supabase refresh token.
-  // Returns the new access token, or null if refresh fails (forces logout).
-  const refreshAccessToken = useCallback(async (): Promise<string | null> => {
-    const rt = refreshTokenRef.current;
-    if (!rt) return null;
-    const refreshed = await requestRefresh(rt);
-    if (refreshed.status !== 'ok') return null;
-    // Persist the new tokens; preserve current user object
-    await tokenStore.setItem(STORAGE_KEY_TOKEN, refreshed.access_token);
-    if (refreshed.refresh_token) {
-      await tokenStore.setItem(STORAGE_KEY_REFRESH_TOKEN, refreshed.refresh_token);
-      refreshTokenRef.current = refreshed.refresh_token;
-    }
-    setToken(refreshed.access_token);
-    lastRefreshAtRef.current = Date.now();
-    return refreshed.access_token;
+  // Single-flight silent refresh. If a refresh is already running, every caller
+  // awaits the SAME promise instead of starting another. This is critical on
+  // self-hosted Supabase: a refresh token is single-use and rotates on each
+  // refresh — two concurrent refreshes would spend the same token, which the
+  // server treats as token reuse and responds to by REVOKING the whole session.
+  // That revocation is the root cause of the app getting permanently stuck
+  // "logged in" with no products after a while. Serialising refreshes prevents it.
+  const refreshInFlightRef = useRef<Promise<string | null> | null>(null);
+  const refreshAccessToken = useCallback((): Promise<string | null> => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const run = (async (): Promise<string | null> => {
+      const rt = refreshTokenRef.current;
+      if (!rt) return null;
+      const refreshed = await requestRefresh(rt);
+      if (refreshed.status !== 'ok') return null;
+      // Persist the new (rotated) tokens; preserve current user object
+      await tokenStore.setItem(STORAGE_KEY_TOKEN, refreshed.access_token);
+      if (refreshed.refresh_token) {
+        await tokenStore.setItem(STORAGE_KEY_REFRESH_TOKEN, refreshed.refresh_token);
+        refreshTokenRef.current = refreshed.refresh_token;
+      }
+      setToken(refreshed.access_token);
+      lastRefreshAtRef.current = Date.now();
+      return refreshed.access_token;
+    })();
+    refreshInFlightRef.current = run;
+    void run.finally(() => { refreshInFlightRef.current = null; });
+    return run;
   }, []);
 
   // Refresh the access token when the app returns to the foreground after being
@@ -227,21 +239,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [refreshAccessToken]);
 
-  // Keep the session alive during long continuous use. Every 5 min we check and,
-  // if it's been >40 min since the last refresh (access tokens live ~1h), refresh
-  // in the background. Combined with the launch + foreground refreshers this keeps
-  // the user logged in indefinitely — they only leave by tapping Sign Out.
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (!refreshTokenRef.current) return;
-      if (Date.now() - lastRefreshAtRef.current < 40 * 60 * 1000) return;
-      void refreshAccessToken();
-    }, 5 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [refreshAccessToken]);
-
   // authFetch — like fetch(), but auto-refreshes JWT on 401 and retries once.
-  // Use this for all authenticated API calls in the app.
+  // This is the primary safety net: any authenticated screen using it self-heals
+  // the instant its token has expired, so products load again without waiting on
+  // a timer or a re-login. Use this for ALL authenticated API calls in the app.
   const authFetch = useCallback(async (url: string, options: RequestInit = {}): Promise<Response> => {
     const currentToken = token;
     const headers = new Headers(options.headers);

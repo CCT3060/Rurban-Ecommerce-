@@ -18,7 +18,7 @@ type ProductRow    = { kind: 'products'; id: string; left: CatalogueProduct; rig
 type ListRow       = SectionHeader | ProductRow;
 
 export default function AllItemsScreen() {
-  const { token } = useAuth();
+  const { authFetch } = useAuth();
   const { totalQty } = useCart();
   const [categories, setCategories]             = useState<CatalogueCategory[]>([]);
   const [loading, setLoading]                   = useState(true);
@@ -30,9 +30,9 @@ export default function AllItemsScreen() {
 
   const fetchCatalogue = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/mobile/all-products`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // authFetch refreshes the token and retries once on a 401, so an expired
+      // session self-heals here instead of silently showing no products.
+      const res = await authFetch(`${API_BASE}/api/mobile/all-products`);
       const json = await res.json() as { data?: CatalogueCategory[]; error?: string };
       if (res.ok && json.data) {
         setCategories(json.data);
@@ -46,7 +46,7 @@ export default function AllItemsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [token]);
+  }, [authFetch]);
 
   useEffect(() => { void fetchCatalogue(); }, [fetchCatalogue]);
 

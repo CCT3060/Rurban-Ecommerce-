@@ -146,7 +146,7 @@ export function B2BProductCard({ item }: { item: CatalogueProduct }) {
 }
 
 export default function B2BCatalogueScreen() {
-  const { token } = useAuth();
+  const { authFetch } = useAuth();
   const { totalQty } = useCart();
   const { setNavVisible } = useNavbar();
   const lastScrollY = useRef(0);
@@ -196,9 +196,9 @@ export default function B2BCatalogueScreen() {
 
   const fetchCatalogue = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/mobile/catalogue`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // authFetch refreshes the token and retries once on a 401, so an expired
+      // session self-heals here instead of silently showing no products.
+      const res = await authFetch(`${API_BASE}/api/mobile/catalogue`);
       const json = await res.json() as { data?: CatalogueCategory[]; error?: string };
       if (res.ok && json.data) {
         setCategories(json.data);
@@ -212,7 +212,7 @@ export default function B2BCatalogueScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [token]);
+  }, [authFetch]);
 
   useEffect(() => {
     void fetchCatalogue();

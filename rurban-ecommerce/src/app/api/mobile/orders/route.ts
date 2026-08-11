@@ -36,6 +36,9 @@ export async function GET(request: Request) {
       notes,
       created_at,
       updated_at,
+      zoho_invoice_number,
+      invoice_pdf_path,
+      signed_invoice_status,
       order_items (
         id,
         product_id,

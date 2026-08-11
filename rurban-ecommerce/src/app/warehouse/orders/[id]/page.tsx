@@ -66,6 +66,11 @@ type OrderDetail = {
   items: OrderItem[];
   zoho_salesorder_id?: string | null;
   zoho_salesorder_number?: string | null;
+  zoho_invoice_id?: string | null;
+  zoho_invoice_number?: string | null;
+  zoho_invoice_status?: string | null;
+  invoice_pdf_path?: string | null;
+  signed_invoice_status?: string | null;
 };
 
 /* ─── Constants ───────────────────────────────────────────────────────────── */
@@ -126,6 +131,8 @@ export default function WarehouseOrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [postingToZoho, setPostingToZoho] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [linkingInvoice, setLinkingInvoice] = useState(false);
 
   const fetchOrder = async () => {
     try {
@@ -141,6 +148,41 @@ export default function WarehouseOrderDetailPage() {
   };
 
   useEffect(() => { void fetchOrder(); }, [id]);
+
+  const linkInvoice = async () => {
+    if (!order) return;
+    const num = invoiceNumber.trim();
+    if (!num) { toast.error("Enter the Zoho invoice number"); return; }
+    setLinkingInvoice(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/link-invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoice_number: num }),
+      });
+      const json = (await res.json()) as { data?: { invoice_number: string }; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to link invoice");
+      toast.success(`Invoice ${json.data?.invoice_number ?? num} linked`);
+      setInvoiceNumber("");
+      await fetchOrder();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to link invoice");
+    } finally {
+      setLinkingInvoice(false);
+    }
+  };
+
+  const openInvoiceFile = async (type: "invoice" | "signed") => {
+    if (!order) return;
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/invoice-file?type=${type}`);
+      const json = (await res.json()) as { data?: { url: string }; error?: string };
+      if (!res.ok || !json.data?.url) throw new Error(json.error ?? "File not available");
+      window.open(json.data.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open file");
+    }
+  };
 
   const postToZoho = async () => {
     if (!order) return;
@@ -282,6 +324,47 @@ export default function WarehouseOrderDetailPage() {
             >
               {postingToZoho ? <><BookOpen className="h-3.5 w-3.5 animate-pulse" /> Posting…</> : <><BookOpen className="h-3.5 w-3.5" /> Post to Zoho Books</>}
             </Button>
+          )}
+        </div>
+      </div>
+
+      {/* ── INVOICE PANEL (screen only) ──────────────────────────── */}
+      <div className="no-print mb-5 rounded-lg border bg-card p-4 max-w-[900px] mx-auto">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold">Invoice</p>
+            <p className="text-xs text-muted-foreground">
+              After creating the invoice in Zoho Books, paste its invoice number here to attach it to this order.
+            </p>
+          </div>
+
+          {order.zoho_invoice_number ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className="border-0 bg-green-100 text-green-700">✓ {order.zoho_invoice_number}</Badge>
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => void openInvoiceFile("invoice")}>
+                <Download className="h-3.5 w-3.5" /> Invoice PDF
+              </Button>
+              {order.signed_invoice_status === "uploaded" ? (
+                <Button variant="outline" size="sm" className="gap-2 border-green-300 text-green-700 hover:bg-green-50" onClick={() => void openInvoiceFile("signed")}>
+                  <Download className="h-3.5 w-3.5" /> Signed copy
+                </Button>
+              ) : (
+                <Badge className="border-0 bg-yellow-100 text-yellow-700">Awaiting customer signature</Badge>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="Zoho invoice number"
+                className="h-9 w-52 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <Button size="sm" className="gap-2" disabled={linkingInvoice} onClick={() => void linkInvoice()}>
+                {linkingInvoice ? <><BookOpen className="h-3.5 w-3.5 animate-pulse" /> Linking…</> : <><BookOpen className="h-3.5 w-3.5" /> Link Invoice</>}
+              </Button>
+            </div>
           )}
         </div>
       </div>

@@ -172,11 +172,24 @@ export default function WarehouseOrderDetailPage() {
     }
   };
 
-  const openInvoiceFile = (type: "invoice" | "signed") => {
+  const openInvoiceFile = async (type: "invoice" | "signed") => {
     if (!order) return;
-    // Open the streaming endpoint directly — the browser sends the session
-    // cookie, and the server pipes the file back (no signed storage URL).
-    window.open(`/api/admin/orders/${order.id}/invoice-file?type=${type}`, "_blank", "noopener,noreferrer");
+    // Fetch with the page's session (same as the order load) — a new-tab
+    // navigation doesn't always carry the auth session, which caused a 403.
+    // The server streams the file; we open the returned blob in a new tab.
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/invoice-file?type=${type}`);
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? "Could not open the file");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open file");
+    }
   };
 
   const postToZoho = async () => {

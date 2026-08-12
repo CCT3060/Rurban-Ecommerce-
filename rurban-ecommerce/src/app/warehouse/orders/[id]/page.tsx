@@ -172,16 +172,11 @@ export default function WarehouseOrderDetailPage() {
     }
   };
 
-  const openInvoiceFile = async (type: "invoice" | "signed") => {
+  const openInvoiceFile = (type: "invoice" | "signed") => {
     if (!order) return;
-    try {
-      const res = await fetch(`/api/admin/orders/${order.id}/invoice-file?type=${type}`);
-      const json = (await res.json()) as { data?: { url: string }; error?: string };
-      if (!res.ok || !json.data?.url) throw new Error(json.error ?? "File not available");
-      window.open(json.data.url, "_blank", "noopener,noreferrer");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not open file");
-    }
+    // Open the streaming endpoint directly — the browser sends the session
+    // cookie, and the server pipes the file back (no signed storage URL).
+    window.open(`/api/admin/orders/${order.id}/invoice-file?type=${type}`, "_blank", "noopener,noreferrer");
   };
 
   const postToZoho = async () => {

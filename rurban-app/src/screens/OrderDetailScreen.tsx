@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
-  ActivityIndicator, Alert,
+  ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { COLORS } from '../lib/theme';
 import { Order, OrderInvoiceInfo, fetchOrderInvoice, uploadSignedInvoice, API_BASE } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -82,8 +83,23 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
         Alert.alert('Not available', 'Could not download the file. Please try again.');
         return;
       }
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(res.uri, { mimeType: ext === 'pdf' ? 'application/pdf' : undefined });
+      const mime = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : 'image/jpeg';
+      if (Platform.OS === 'android') {
+        // Open the file directly in the device's default viewer (no share sheet).
+        try {
+          const contentUri = await FileSystem.getContentUriAsync(res.uri);
+          await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+            data: contentUri,
+            flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+            type: mime,
+          });
+        } catch {
+          // No viewer installed → fall back to the share sheet.
+          if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(res.uri, { mimeType: mime });
+          else Alert.alert('Downloaded', `Saved to:\n${res.uri}`);
+        }
+      } else if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(res.uri, { mimeType: mime });
       } else {
         Alert.alert('Downloaded', `Saved to:\n${res.uri}`);
       }

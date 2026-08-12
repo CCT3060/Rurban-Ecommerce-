@@ -6,6 +6,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -51,6 +52,8 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState<'invoice' | 'signed' | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [pendingPhoto, setPendingPhoto] = useState<{ uri: string; name: string; type: string } | null>(null);
 
   const loadInvoice = useCallback(async () => {
     if (!token || !order?.id || !hasInvoice) return;
@@ -133,6 +136,44 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
       setUploading(false);
       Alert.alert('Error', 'Could not upload the file.');
     }
+  };
+
+  // Take a photo of the signed invoice with the camera, run a basic quality
+  // check, then show it for the user to confirm before uploading.
+  const handleCaptureSigned = async () => {
+    if (!order?.id) return;
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Camera needed', 'Please allow camera access to photograph the signed invoice.');
+      return;
+    }
+    setCapturing(true);
+    try {
+      const result = await ImagePicker.launchCameraAsync({ quality: 0.7, allowsEditing: false });
+      if (result.canceled || !result.assets?.[0]) return;
+      const a = result.assets[0];
+      // Basic quality check — reject obviously blank/too-small photos.
+      const tooSmall = (a.width && a.width < 300) || (a.height && a.height < 300);
+      const tinyFile = a.fileSize != null && a.fileSize < 15000;
+      if (tooSmall || tinyFile) {
+        Alert.alert('Photo unclear', 'That photo looks blank or too small. Please retake a clear photo of the full signed invoice.');
+        return;
+      }
+      setPendingPhoto({ uri: a.uri, name: `signed-${order.order_number}.jpg`, type: a.mimeType ?? 'image/jpeg' });
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const confirmUploadSigned = async () => {
+    if (!token || !order?.id || !pendingPhoto) return;
+    setUploading(true);
+    const res = await uploadSignedInvoice(token, order.id, pendingPhoto);
+    setUploading(false);
+    if (res.error) { Alert.alert('Upload failed', res.error); return; }
+    setPendingPhoto(null);
+    Alert.alert('Uploaded', 'Your signed invoice has been submitted.');
+    await loadInvoice();
   };
 
   if (!order) {
@@ -411,19 +452,49 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
                         <Text style={s.invoiceBtnText}>View</Text></>}
                 </TouchableOpacity>
               </View>
+            ) : pendingPhoto ? (
+              <>
+                <Text style={s.invoiceHint}>Check the signature/stamp is clearly visible, then confirm.</Text>
+                <Image source={{ uri: pendingPhoto.uri }} style={s.signedPreview} resizeMode="contain" />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    style={[s.uploadBtn, s.retakeBtn]}
+                    activeOpacity={0.88}
+                    onPress={() => setPendingPhoto(null)}
+                    disabled={uploading}
+                  >
+                    <Ionicons name="camera-reverse-outline" size={16} color={COLORS.dark} style={{ marginRight: 6 }} />
+                    <Text style={[s.uploadBtnText, { color: COLORS.dark }]}>Retake</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.uploadBtn, { flex: 1 }]}
+                    activeOpacity={0.88}
+                    onPress={confirmUploadSigned}
+                    disabled={uploading}
+                  >
+                    {uploading
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <><Ionicons name="checkmark-circle-outline" size={17} color="#fff" style={{ marginRight: 7 }} />
+                          <Text style={s.uploadBtnText}>Confirm & Upload</Text></>}
+                  </TouchableOpacity>
+                </View>
+              </>
             ) : (
               <>
-                <Text style={s.invoiceHint}>Download the invoice, sign it, then upload the signed copy here.</Text>
+                <Text style={s.invoiceHint}>Download the invoice, sign it, then take a photo of the signed copy.</Text>
                 <TouchableOpacity
                   style={s.uploadBtn}
                   activeOpacity={0.88}
-                  onPress={handleUploadSigned}
-                  disabled={uploading}
+                  onPress={handleCaptureSigned}
+                  disabled={capturing}
                 >
-                  {uploading
+                  {capturing
                     ? <ActivityIndicator size="small" color="#fff" />
-                    : <><Ionicons name="cloud-upload-outline" size={17} color="#fff" style={{ marginRight: 7 }} />
-                        <Text style={s.uploadBtnText}>Upload Signed Invoice</Text></>}
+                    : <><Ionicons name="camera-outline" size={18} color="#fff" style={{ marginRight: 7 }} />
+                        <Text style={s.uploadBtnText}>Take Photo of Signed Invoice</Text></>}
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleUploadSigned} activeOpacity={0.7} style={s.chooseFileLink}>
+                  <Text style={s.chooseFileText}>or choose a file</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -560,6 +631,13 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.primary, borderRadius: 12, height: 46,
   },
   uploadBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  retakeBtn: { flex: 1, backgroundColor: COLORS.bg, borderWidth: 1.5, borderColor: COLORS.border },
+  signedPreview: {
+    width: '100%', height: 220, borderRadius: 12, backgroundColor: COLORS.bg,
+    borderWidth: 1, borderColor: COLORS.border, marginBottom: 12,
+  },
+  chooseFileLink: { alignItems: 'center', paddingVertical: 10 },
+  chooseFileText: { fontSize: 13, color: COLORS.primary, fontWeight: '600' },
 
   /* Error */
   errorWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },

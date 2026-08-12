@@ -40,7 +40,13 @@
           "sounds": []
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow Rurban to take a photo of your signed invoice."
+        }
+      ]
     ],
     "extra": {
       "eas": {

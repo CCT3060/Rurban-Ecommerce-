@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
-  Linking, ActivityIndicator, Alert,
+  ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { COLORS } from '../lib/theme';
-import { Order, OrderInvoiceInfo, fetchOrderInvoice, uploadSignedInvoice } from '../lib/api';
+import { Order, OrderInvoiceInfo, fetchOrderInvoice, uploadSignedInvoice, API_BASE } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
 /* ─── Status config ─────────────────────────────────────────────────────────── */
@@ -47,6 +49,7 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
   const [invoice, setInvoice] = useState<OrderInvoiceInfo | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState<'invoice' | 'signed' | null>(null);
 
   const loadInvoice = useCallback(async () => {
     if (!token || !order?.id || !hasInvoice) return;
@@ -58,9 +61,37 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
 
   useEffect(() => { void loadInvoice(); }, [loadInvoice]);
 
-  const openUrl = (url?: string | null) => {
-    if (!url) { Alert.alert('Not available', 'The file link is not ready. Pull to refresh.'); return; }
-    Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open the file.'));
+  // Download the invoice (or the customer's signed copy) by streaming the bytes
+  // THROUGH our own API — the same host the app already uses — then open the
+  // system share/preview sheet. This never depends on the app resolving the
+  // storage subdomain in a browser.
+  const handleDownload = async (type: 'invoice' | 'signed') => {
+    if (!token || !order?.id) return;
+    setDownloading(type);
+    try {
+      const ext = type === 'signed'
+        ? (invoice?.signed_invoice_url?.split('?')[0].split('.').pop() || 'pdf')
+        : 'pdf';
+      const fileUri = `${FileSystem.cacheDirectory}${type}-${order.order_number}.${ext}`;
+      const res = await FileSystem.downloadAsync(
+        `${API_BASE}/api/mobile/orders/${order.id}/invoice?download=${type}`,
+        fileUri,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (res.status !== 200) {
+        Alert.alert('Not available', 'Could not download the file. Please try again.');
+        return;
+      }
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(res.uri, { mimeType: ext === 'pdf' ? 'application/pdf' : undefined });
+      } else {
+        Alert.alert('Downloaded', `Saved to:\n${res.uri}`);
+      }
+    } catch {
+      Alert.alert('Error', 'Could not download the file.');
+    } finally {
+      setDownloading(null);
+    }
   };
 
   const handleUploadSigned = async () => {
@@ -332,10 +363,10 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
               <TouchableOpacity
                 style={s.invoiceBtn}
                 activeOpacity={0.85}
-                onPress={() => openUrl(invoice?.invoice_url)}
-                disabled={invoiceLoading}
+                onPress={() => handleDownload('invoice')}
+                disabled={invoiceLoading || downloading === 'invoice'}
               >
-                {invoiceLoading
+                {invoiceLoading || downloading === 'invoice'
                   ? <ActivityIndicator size="small" color={COLORS.primary} />
                   : <><Ionicons name="download-outline" size={15} color={COLORS.primary} style={{ marginRight: 5 }} />
                       <Text style={s.invoiceBtnText}>Download</Text></>}
@@ -352,12 +383,17 @@ export default function OrderDetailScreen({ route, navigation }: { route: any; n
                   <Text style={s.invoiceName}>Signed copy uploaded</Text>
                   <Text style={s.invoiceMeta}>Awaiting review</Text>
                 </View>
-                {invoice?.signed_invoice_url && (
-                  <TouchableOpacity style={s.invoiceBtn} activeOpacity={0.85} onPress={() => openUrl(invoice.signed_invoice_url)}>
-                    <Ionicons name="eye-outline" size={15} color={COLORS.primary} style={{ marginRight: 5 }} />
-                    <Text style={s.invoiceBtnText}>View</Text>
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                  style={s.invoiceBtn}
+                  activeOpacity={0.85}
+                  onPress={() => handleDownload('signed')}
+                  disabled={downloading === 'signed'}
+                >
+                  {downloading === 'signed'
+                    ? <ActivityIndicator size="small" color={COLORS.primary} />
+                    : <><Ionicons name="eye-outline" size={15} color={COLORS.primary} style={{ marginRight: 5 }} />
+                        <Text style={s.invoiceBtnText}>View</Text></>}
+                </TouchableOpacity>
               </View>
             ) : (
               <>

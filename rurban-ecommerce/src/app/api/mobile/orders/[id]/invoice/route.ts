@@ -52,6 +52,39 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!ctx.ok) return ctx.response;
   const { admin, order } = ctx;
 
+  // ── Streaming download mode (?download=invoice|signed) ──────────────────────
+  // The app fetches the PDF bytes through THIS API (same host it already uses),
+  // and we pull the file from storage server-side. This means the download never
+  // depends on the app reaching the storage subdomain directly.
+  const download = new URL(request.url).searchParams.get("download");
+  if (download === "invoice" || download === "signed") {
+    const bucket = download === "signed" ? "signed-invoices" : "invoices";
+    const path = download === "signed" ? order.signed_invoice_path : order.invoice_pdf_path;
+    if (!path) {
+      return NextResponse.json({ error: "File not available" }, { status: 404 });
+    }
+    const { data: blob, error } = await admin.storage.from(bucket).download(path);
+    if (error || !blob) {
+      return NextResponse.json({ error: error?.message ?? "File not found" }, { status: 404 });
+    }
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const ext = (path.split(".").pop() || "pdf").toLowerCase();
+    const mime =
+      ext === "pdf" ? "application/pdf" :
+      ext === "png" ? "image/png" :
+      ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "application/octet-stream";
+    const label = download === "signed" ? "signed-invoice" : "invoice";
+    const filename = `${label}-${order.zoho_invoice_number ?? id}.${ext}`;
+    return new NextResponse(bytes, {
+      status: 200,
+      headers: {
+        "Content-Type": mime,
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
+  }
+
   if (!order.invoice_pdf_path) {
     return NextResponse.json({ data: { available: false } });
   }

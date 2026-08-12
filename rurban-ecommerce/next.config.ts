@@ -32,9 +32,6 @@ const nextConfig: NextConfig = {
     // npx supabase gen types typescript --project-id <id> > src/types/supabase.ts
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   async headers() {
     // Allowed origins: the production site + localhost for dev.
     // Mobile API endpoints (/api/mobile/*) still need open CORS for the app.
@@ -103,6 +100,10 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
+    // Serve images directly from the (already CSP-allowed) HTTPS storage host
+    // instead of proxying through /_next/image. Avoids the optimizer's
+    // remotePatterns host check, which was rejecting api.rurbanmart.com.
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",

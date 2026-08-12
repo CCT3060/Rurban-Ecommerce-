@@ -15,13 +15,14 @@ function resolveApiBase(): string {
       url &&
       !url.includes("loca.lt") &&
       !url.includes("yourdomain.com") &&
-      !url.includes("13.201.185.169") // old EC2 IP, retired — reject stale cached values
+      !url.includes("13.201.185.169") && // old EC2 IP, retired
+      !url.includes("13.202.18.162")     // raw IP over http — superseded by the HTTPS domain
     ) {
       return url. replace(/\/$/, ""); // strip trailing slash
     }
   }
-  // Hardcoded fallback — production EC2 Elastic IP.
-  return "http://13.202.18.162";
+  // Hardcoded fallback — production HTTPS domain.
+  return "https://rurbanmart.com";
 }
 
 export const API_BASE: string = resolveApiBase();

@@ -178,7 +178,7 @@ export default function WarehouseOrderDetailPage() {
     // navigation doesn't always carry the auth session, which caused a 403.
     // The server streams the file; we open the returned blob in a new tab.
     try {
-      const res = await fetch(`/api/admin/orders/${order.id}/invoice-file?type=${type}`);
+      const res = await fetch(`/api/warehouse/orders/${order.id}/invoice-file?type=${type}`);
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(j.error ?? "Could not open the file");

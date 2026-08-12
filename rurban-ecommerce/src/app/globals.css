@@ -99,8 +99,9 @@
 @layer utilities {
   .container {
     width: 100%;
-      width: 1300px !important;
+    max-width: 1300px !important;
     margin-inline: auto !important;
+    box-sizing: border-box !important;
   }
 }
 

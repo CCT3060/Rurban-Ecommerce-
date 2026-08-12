@@ -66,7 +66,7 @@ export default function Navbar({ initialUser = null }: { initialUser?: import("@
   const [locationLabel, setLocationLabel] = useState<string>("Detect location");
   const [locationLoading, setLocationLoading] = useState(false);
   const isClient = useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false,
   );
@@ -272,31 +272,31 @@ export default function Navbar({ initialUser = null }: { initialUser?: import("@
     >
       {/* 1. Top Utility Bar — hidden for B2B users */}
       {!isB2B && (
-      <div className="bg-muted/50 text-muted-foreground text-[11px] py-1.5 hidden md:block">
-        <div className="container mx-auto px-4 flex justify-between items-center">
-          <div
-            className="flex items-center gap-1 hover:opacity-80 cursor-pointer transition-opacity"
-            onClick={detectLocation}
-            title="Click to detect your location"
-          >
-            <span className="flex items-center gap-1 font-medium text-foreground">
-              <MapPin className="h-3 w-3 text-primary" />
-              Deliver to:{" "}
-              <span className="text-primary font-semibold">
-                {locationLoading ? "Detecting..." : locationLabel}
+        <div className="bg-muted/50 text-muted-foreground text-[11px] py-1.5 hidden md:block">
+          <div className="container mx-auto px-4 flex justify-between items-center">
+            <div
+              className="flex items-center gap-1 hover:opacity-80 cursor-pointer transition-opacity"
+              onClick={detectLocation}
+              title="Click to detect your location"
+            >
+              <span className="flex items-center gap-1 font-medium text-foreground">
+                <MapPin className="h-3 w-3 text-primary" />
+                Deliver to:{" "}
+                <span className="text-primary font-semibold">
+                  {locationLoading ? "Detecting..." : locationLabel}
+                </span>
               </span>
-            </span>
-          </div>
-          <div className="flex items-center gap-6">
-            <Link href="/contact" className="hover:underline">
-              Customer Service
-            </Link>
-            <Link href="/account/orders" className="hover:underline">
-              Track Order
-            </Link>
+            </div>
+            <div className="flex items-center gap-6">
+              <Link href="/contact" className="hover:underline">
+                Customer Service
+              </Link>
+              <Link href="/account/orders" className="hover:underline">
+                Track Order
+              </Link>
+            </div>
           </div>
         </div>
-      </div>
       )}
 
       {/* 2. Main Navigation Bar */}
@@ -542,16 +542,16 @@ export default function Navbar({ initialUser = null }: { initialUser?: import("@
                   </DropdownMenuItem>
                   {(user.role === "admin" ||
                     user.role === "warehouse_admin") && (
-                    <DropdownMenuItem className="cursor-pointer py-2">
-                      <Link
-                        href={user.role === "admin" ? "/admin" : "/warehouse"}
-                        className="flex items-center w-full"
-                      >
-                        <LayoutDashboard className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
-                        Dashboard
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
+                      <DropdownMenuItem className="cursor-pointer py-2">
+                        <Link
+                          href={user.role === "admin" ? "/admin" : "/warehouse"}
+                          className="flex items-center w-full"
+                        >
+                          <LayoutDashboard className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
+                          Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={handleLogout}
@@ -580,22 +580,22 @@ export default function Navbar({ initialUser = null }: { initialUser?: import("@
 
             {/* Wishlist — hidden for B2B users */}
             {!isB2B && (
-            <Link
-              href="/wishlist"
-              className="relative flex items-center gap-2 hover:bg-muted/50 p-1.5 md:px-2 md:py-1.5 rounded-lg transition-colors group"
-            >
-              <div className="relative">
-                <Heart className="h-6 w-6 text-foreground/70 group-hover:text-red-500 transition-colors" />
-                {isClient && wishlistCount > 0 && (
-                  <Badge className="absolute -top-1.5 -right-2 h-[18px] min-w-[18px] flex items-center justify-center p-0 text-[10px] font-bold bg-red-500 hover:bg-red-600 border-0 rounded-full shadow-sm animate-in fade-in zoom-in">
-                    {wishlistCount > 9 ? "9+" : wishlistCount}
-                  </Badge>
-                )}
-              </div>
-              <span className="hidden xl:block text-[13px] font-bold text-foreground opacity-90 group-hover:opacity-100">
-                Wishlist
-              </span>
-            </Link>
+              <Link
+                href="/wishlist"
+                className="relative flex items-center gap-2 hover:bg-muted/50 p-1.5 md:px-2 md:py-1.5 rounded-lg transition-colors group"
+              >
+                <div className="relative">
+                  <Heart className="h-6 w-6 text-foreground/70 group-hover:text-red-500 transition-colors" />
+                  {isClient && wishlistCount > 0 && (
+                    <Badge className="absolute -top-1.5 -right-2 h-[18px] min-w-[18px] flex items-center justify-center p-0 text-[10px] font-bold bg-red-500 hover:bg-red-600 border-0 rounded-full shadow-sm animate-in fade-in zoom-in">
+                      {wishlistCount > 9 ? "9+" : wishlistCount}
+                    </Badge>
+                  )}
+                </div>
+                <span className="hidden xl:block text-[13px] font-bold text-foreground opacity-90 group-hover:opacity-100">
+                  Wishlist
+                </span>
+              </Link>
             )}
 
             {/* Cart */}
@@ -650,117 +650,115 @@ export default function Navbar({ initialUser = null }: { initialUser?: import("@
           </div>
         </div>
       ) : (
-      /* B2C full category strip + mega menu */
-      <div
-        className="relative hidden lg:block bg-[#1878c9] text-white shadow-sm"
-        onMouseLeave={() => setIsCategoryMenuOpen(false)}
-      >
-        <div className="container relative mx-auto px-4">
-          <nav className="flex items-center">
-            <button
-              type="button"
-              className="inline-flex h-14 min-w-[250px] items-center gap-3 bg-[#1469af] px-5 text-left transition-colors hover:bg-[#0f5f9f]"
-              onMouseEnter={() => setIsCategoryMenuOpen(true)}
-              onClick={() => setIsCategoryMenuOpen((prev) => !prev)}
-            >
-              <Menu className="h-[18px] w-[18px]" />
-              <span className="text-sm font-bold tracking-wide leading-none">ALL CATEGORIES</span>
-              <ChevronDown
-                className={`ml-auto h-4 w-4 transition-transform ${isCategoryMenuOpen ? "rotate-180" : ""}`}
-              />
-            </button>
+        /* B2C full category strip + mega menu */
+        <div
+          className="relative hidden lg:block bg-[#1878c9] text-white shadow-sm"
+          onMouseLeave={() => setIsCategoryMenuOpen(false)}
+        >
+          <div className="container relative mx-auto px-4">
+            <nav className="flex items-center">
+              <button
+                type="button"
+                className="inline-flex h-14 min-w-[250px] items-center gap-3 bg-[#1469af] px-5 text-left transition-colors hover:bg-[#0f5f9f]"
+                onMouseEnter={() => setIsCategoryMenuOpen(true)}
+                onClick={() => setIsCategoryMenuOpen((prev) => !prev)}
+              >
+                <Menu className="h-[18px] w-[18px]" />
+                <span className="text-sm font-bold tracking-wide leading-none">ALL CATEGORIES</span>
+                <ChevronDown
+                  className={`ml-auto h-4 w-4 transition-transform ${isCategoryMenuOpen ? "rotate-180" : ""}`}
+                />
+              </button>
 
-            <div className="ml-6 flex items-center gap-1 overflow-x-auto py-1 no-scrollbar">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="rounded-md px-6 py-3 text-[13px] font-semibold text-white/95 transition-colors hover:bg-white/10 hover:text-white"
-                >
-                  {link.label}
-                </Link>
-              ))}
-              {user && user.role === "user" && (
-                <Link
-                  href="/my-catalogue"
-                  className="rounded-md px-6 py-3 text-[13px] font-semibold text-white/95 transition-colors hover:bg-white/10 hover:text-white"
-                >
-                  My Catalogue
-                </Link>
-              )}
-            </div>
-          </nav>
+              <div className="ml-6 flex items-center gap-1 overflow-x-auto py-1 no-scrollbar">
+                {NAV_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="rounded-md px-6 py-3 text-[13px] font-semibold text-white/95 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+                {user && user.role === "user" && (
+                  <Link
+                    href="/my-catalogue"
+                    className="rounded-md px-6 py-3 text-[13px] font-semibold text-white/95 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    My Catalogue
+                  </Link>
+                )}
+              </div>
+            </nav>
 
-          {isCategoryMenuOpen && topLevelCategories.length > 0 && (
-            <div className="absolute left-4 right-4 top-full z-50 pt-2" onMouseEnter={() => setIsCategoryMenuOpen(true)}>
-              <div className="grid grid-cols-[260px_1fr_1fr] overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl">
-                <div className="max-h-[530px] overflow-y-auto bg-[#1a1d22] p-3 text-white">
-                  {topLevelCategories.map((category) => {
-                    const isActive = activeParentCategory?.id === category.id;
-                    return (
-                      <button
-                        key={category.id}
-                        type="button"
-                        onMouseEnter={() => setActiveParentCategoryId(category.id)}
-                        className={`mb-1 flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left text-base font-medium transition-colors ${
-                          isActive ? "bg-white/15" : "hover:bg-white/10"
-                        }`}
-                      >
-                        <span className="truncate">{category.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="max-h-[530px] overflow-y-auto border-l border-border/40 bg-white p-3">
-                  {middleColumnCategories.length === 0 ? (
-                    <p className="px-3 py-2 text-sm text-muted-foreground">No sub categories</p>
-                  ) : (
-                    middleColumnCategories.map((category) => {
-                      const isActive = activeMiddleCategory?.id === category.id;
+            {isCategoryMenuOpen && topLevelCategories.length > 0 && (
+              <div className="absolute left-4 right-4 top-full z-50 pt-2" onMouseEnter={() => setIsCategoryMenuOpen(true)}>
+                <div className="grid grid-cols-[260px_1fr_1fr] overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl">
+                  <div className="max-h-[530px] overflow-y-auto bg-[#1a1d22] p-3 text-white">
+                    {topLevelCategories.map((category) => {
+                      const isActive = activeParentCategory?.id === category.id;
                       return (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onMouseEnter={() => setActiveParentCategoryId(category.id)}
+                          className={`mb-1 flex w-full items-center justify-between rounded-md px-3 py-2.5 text-left text-base font-medium transition-colors ${isActive ? "bg-white/15" : "hover:bg-white/10"
+                            }`}
+                        >
+                          <span className="truncate">{category.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="max-h-[530px] overflow-y-auto border-l border-border/40 bg-white p-3">
+                    {middleColumnCategories.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">No sub categories</p>
+                    ) : (
+                      middleColumnCategories.map((category) => {
+                        const isActive = activeMiddleCategory?.id === category.id;
+                        return (
+                          <Link
+                            key={category.id}
+                            href={`/category/${category.slug}`}
+                            onMouseEnter={() => setActiveChildCategoryId(category.id)}
+                            className={`mb-1 flex w-full items-center justify-between rounded-md px-3 py-2.5 text-base font-medium transition-colors ${isActive ? "bg-muted text-foreground" : "text-foreground hover:bg-muted/60"
+                              }`}
+                          >
+                            <span className="truncate">{category.name}</span>
+                          </Link>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="max-h-[530px] overflow-y-auto border-l border-border/40 bg-white p-3">
+                    {rightColumnCategories.length > 0 ? (
+                      rightColumnCategories.map((category) => (
                         <Link
                           key={category.id}
                           href={`/category/${category.slug}`}
-                          onMouseEnter={() => setActiveChildCategoryId(category.id)}
-                          className={`mb-1 flex w-full items-center justify-between rounded-md px-3 py-2.5 text-base font-medium transition-colors ${
-                            isActive ? "bg-muted text-foreground" : "text-foreground hover:bg-muted/60"
-                          }`}
+                          className="mb-1 flex w-full items-center rounded-md px-3 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-muted/60"
                         >
                           <span className="truncate">{category.name}</span>
                         </Link>
-                      );
-                    })
-                  )}
-                </div>
-
-                <div className="max-h-[530px] overflow-y-auto border-l border-border/40 bg-white p-3">
-                  {rightColumnCategories.length > 0 ? (
-                    rightColumnCategories.map((category) => (
+                      ))
+                    ) : activeMiddleCategory ? (
                       <Link
-                        key={category.id}
-                        href={`/category/${category.slug}`}
-                        className="mb-1 flex w-full items-center rounded-md px-3 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-muted/60"
+                        href={`/category/${activeMiddleCategory.slug}`}
+                        className="mb-1 flex w-full items-center rounded-md bg-muted px-3 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-muted/80"
                       >
-                        <span className="truncate">{category.name}</span>
+                        Shop {activeMiddleCategory.name}
                       </Link>
-                    ))
-                  ) : activeMiddleCategory ? (
-                    <Link
-                      href={`/category/${activeMiddleCategory.slug}`}
-                      className="mb-1 flex w-full items-center rounded-md bg-muted px-3 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-muted/80"
-                    >
-                      Shop {activeMiddleCategory.name}
-                    </Link>
-                  ) : (
-                    <p className="px-3 py-2 text-sm text-muted-foreground">Select a category</p>
-                  )}
+                    ) : (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">Select a category</p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
       )}
     </header>
   );

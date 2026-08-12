@@ -35,7 +35,7 @@ export default function WishlistProductsRail() {
   if (items.length === 0 && !loading) return null;
 
   return (
-    <section className="border-t border-border/25 bg-white py-7 md:py-9">
+    <section className="w-full overflow-hidden border-t border-border/25 bg-white py-7 md:py-9">
       <div className="container mx-auto px-3 md:px-4 lg:px-6">
         <SectionHeader
           title="Wishlist Products"

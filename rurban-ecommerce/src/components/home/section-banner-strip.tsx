@@ -13,7 +13,7 @@ export default function SectionBannerStrip({ banners, title, hideTitle = false }
   if (banners.length === 0) return null;
 
   return (
-    <section className="py-4 md:py-5">
+    <section className="w-full overflow-hidden py-4 md:py-5">
       <div className="container mx-auto px-3 md:px-4 lg:px-6">
         {!hideTitle && <h2 className="mb-3 text-lg font-semibold md:text-xl">{title}</h2>}
         <div className="grid grid-cols-1 gap-3 md:gap-4">

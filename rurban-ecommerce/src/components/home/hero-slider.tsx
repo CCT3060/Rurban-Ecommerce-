@@ -67,7 +67,7 @@ export default function HeroSlider({ banners }: HeroSliderProps) {
   }
 
   return (
-    <section className="relative py-2 md:py-3">
+    <section className="relative w-full overflow-hidden py-2 md:py-3">
       <div className="container mx-auto px-3 md:px-4 lg:px-6">
         <Carousel
           opts={{ loop: true }}

@@ -1,4 +1,4 @@
-﻿// Home page is statically generated and revalidated every 60 seconds (ISR).
+// Home page is statically generated and revalidated every 60 seconds (ISR).
 // This eliminates 9 parallel DB queries per visitor and serves from CDN cache.
 export const revalidate = 60;
 
@@ -323,7 +323,7 @@ export default async function HomePage() {
     })?.id ?? null;
 
   return (
-    <div className="flex min-h-screen flex-col bg-white selection:bg-primary/20">
+    <div className="flex min-h-screen w-full flex-col overflow-hidden bg-white selection:bg-primary/20">
       <div className="fixed inset-0 z-[-1] bg-slate-50/30 pointer-events-none" />
 
       {orderedSections.map((section) => {
@@ -398,7 +398,7 @@ export default async function HomePage() {
           const categorySection = (
             <section
               key={`${section.id}-categories`}
-              className="relative overflow-hidden py-8 md:py-10"
+              className="relative w-full overflow-hidden py-8 md:py-10"
             >
               <ShopByCategorySlider
                 categories={categories}
@@ -416,7 +416,7 @@ export default async function HomePage() {
             .map((productSection) => (
             <section
               key={`${section.id}-${productSection.id}`}
-              className="border-t border-border/25 bg-white py-7 md:py-9"
+              className="w-full border-t border-border/25 bg-white py-7 md:py-9"
             >
               <div className="container mx-auto px-3 md:px-4 lg:px-6">
                 <SectionHeader
@@ -457,7 +457,7 @@ export default async function HomePage() {
           if (parentCategoryRows.length === 0) return null;
 
           return (
-            <section key={section.id} className="border-t border-border/30 bg-white py-6 md:py-8">
+            <section key={section.id} className="w-full border-t border-border/30 bg-white py-6 md:py-8 overflow-hidden">
               <div className="container mx-auto px-3 md:px-4 lg:px-6">
                 <div className="divide-y divide-border/70 rounded-xl border border-border/60 bg-white">
                   {parentCategoryRows.map((parent) => {
@@ -510,7 +510,7 @@ export default async function HomePage() {
 
         if (sectionType === "testimonials") {
           return (
-            <section key={section.id} className="bg-muted/20 py-8 md:py-10">
+            <section key={section.id} className="w-full overflow-hidden bg-muted/20 py-8 md:py-10">
               <div className="container mx-auto px-3 md:px-4 lg:px-6">
                 <SectionHeader
                   title={section.title || "What Our Customers Say"}

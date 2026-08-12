@@ -125,9 +125,12 @@ const nextConfig: NextConfig = {
         hostname: "thumbs.dreamstime.com",
       },
       // Self-hosted Supabase served over HTTPS behind the app domain.
-      // Hardcoded (not only env-derived) so image optimization always allows it,
-      // regardless of build-time env-loading quirks.
+      // Explicit hosts (not env-derived, not wildcard) so image optimization
+      // always allows them, regardless of build-time env quirks or wildcard
+      // matching differences between Next versions.
+      { protocol: "https", hostname: "api.rurbanmart.com" },
       { protocol: "https", hostname: "rurbanmart.com" },
+      { protocol: "https", hostname: "www.rurbanmart.com" },
       { protocol: "https", hostname: "**.rurbanmart.com" },
       // Legacy self-hosted host, still valid for any un-rewritten URLs.
       { protocol: "http", hostname: "13.202.18.162", port: "8000" },

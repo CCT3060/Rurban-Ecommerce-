@@ -32,24 +32,21 @@ export async function GET(request: Request) {
   if (status) query = query.eq("status", status);
   if (categoryId) query = query.eq("category_id", categoryId);
 
+  // Push search into the DB query so it filters across ALL products, not just the current page
+  if (search) {
+    const q = `%${search}%`;
+    query = query.or(
+      `name.ilike.${q},sku.ilike.${q},zoho_category_name.ilike.${q},hsn_or_sac.ilike.${q}`
+    );
+  }
+
   const { data, error, count } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  // Apply search filter in JS (covers name, sku, zoho_category_name, hsn_or_sac)
-  let rows = (data ?? []) as Record<string, unknown>[];
-  if (search) {
-    const q = search.toLowerCase();
-    rows = rows.filter((p) =>
-      String(p.name ?? "").toLowerCase().includes(q) ||
-      String(p.sku ?? "").toLowerCase().includes(q) ||
-      String(p.zoho_category_name ?? "").toLowerCase().includes(q) ||
-      String(p.hsn_or_sac ?? "").toLowerCase().includes(q) ||
-      String((p.category as Record<string, unknown> | null)?.name ?? "").toLowerCase().includes(q)
-    );
-  }
+  const rows = (data ?? []) as Record<string, unknown>[];
 
   return NextResponse.json({ data: rows, total: count ?? rows.length });
 }
@@ -102,6 +99,8 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = admin as any;
   const payload = {
     name,
     slug: (body.slug?.trim() || generateSlug(name)).toLowerCase(),
@@ -120,7 +119,7 @@ export async function POST(request: Request) {
     is_new_arrival: Boolean(body.is_new_arrival),
   };
 
-  const { data: created, error } = await admin
+  const { data: created, error } = await db
     .from("products")
     .insert(payload)
     .select("*")
@@ -131,7 +130,7 @@ export async function POST(request: Request) {
   }
 
   if (body.image_url) {
-    const { error: imageError } = await admin.from("product_images").insert({
+    const { error: imageError } = await db.from("product_images").insert({
       product_id: created.id,
       image_url: normalizeSupabaseImageUrl(body.image_url),
       is_primary: true,
@@ -156,13 +155,13 @@ export async function POST(request: Request) {
     .filter((variant) => variant.name && variant.type && variant.value);
 
   if (variants.length > 0) {
-    const { error: variantError } = await admin.from("product_variants").insert(variants);
+    const { error: variantError } = await db.from("product_variants").insert(variants);
     if (variantError) {
       return NextResponse.json({ error: variantError.message }, { status: 400 });
     }
   }
 
-  const { data: fullProduct, error: fetchError } = await admin
+  const { data: fullProduct, error: fetchError } = await db
     .from("products")
     .select("*, category:categories(*), images:product_images(*), variants:product_variants(*)")
     .eq("id", created.id)

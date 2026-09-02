@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import Image from "next/image";
 
@@ -129,6 +132,7 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [postingToZoho, setPostingToZoho] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
 
   const fetchOrder = async () => {
     try {
@@ -254,25 +258,45 @@ export default function OrderDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 pl-11 sm:pl-0">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              disabled={updating}
-              className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm hover:bg-accent disabled:opacity-50"
-            >
-              <Badge className={`border-0 pointer-events-none ${statusColors[order.status]}`}>{order.status}</Badge>
-              <ChevronDown className="h-3 w-3 text-muted-foreground" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {STATUS_FLOW.map((s) => (
-                <DropdownMenuItem key={s} disabled={s === order.status} onClick={() => void updateOrder({ status: s })}>
-                  <Badge className={`border-0 mr-2 ${statusColors[s]}`}>{s}</Badge>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => void updateOrder({ payment_status: "paid" })} disabled={order.payment_status === "paid"}>Mark Paid</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void updateOrder({ payment_status: "refunded" })} disabled={order.payment_status === "refunded"}>Mark Refunded</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Status is locked once delivered or cancelled */}
+          {(order.status === "delivered" || order.status === "cancelled") ? (
+            <Badge className={`border-0 px-3 py-1.5 text-sm cursor-not-allowed select-none ${statusColors[order.status]}`}>
+              {order.status}
+            </Badge>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={updating}
+                className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm hover:bg-accent disabled:opacity-50"
+              >
+                <Badge className={`border-0 pointer-events-none ${statusColors[order.status]}`}>{order.status}</Badge>
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {STATUS_FLOW.map((s) => (
+                  <DropdownMenuItem
+                    key={s}
+                    disabled={s === order.status}
+                    onClick={() => {
+                      if (s === "delivered" || s === "cancelled") {
+                        setPendingStatus(s);
+                      } else {
+                        void updateOrder({ status: s });
+                      }
+                    }}
+                  >
+                    <Badge className={`border-0 mr-2 ${statusColors[s]}`}>{s}</Badge>
+                    {(s === "delivered" || s === "cancelled") && (
+                      <span className="text-xs text-muted-foreground ml-auto">(irreversible)</span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => void updateOrder({ payment_status: "paid" })} disabled={order.payment_status === "paid"}>Mark Paid</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void updateOrder({ payment_status: "refunded" })} disabled={order.payment_status === "refunded"}>Mark Refunded</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Badge className={`border-0 ${paymentColors[order.payment_status]}`}>{order.payment_status}</Badge>
           <Button variant="default" size="sm" className="gap-2" onClick={() => window.print()}>
             <Download className="h-3.5 w-3.5" /> Export PDF
@@ -523,6 +547,35 @@ export default function OrderDetailPage() {
           Corp Add: {COMPANY.address} &nbsp;|&nbsp; Company ID :: {COMPANY.cin}
         </div>
       </div>
+
+      {/* ── Confirmation dialog for terminal status changes ── */}
+      <Dialog open={!!pendingStatus} onOpenChange={(open) => { if (!open) setPendingStatus(null); }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>
+              Mark order as &quot;{pendingStatus}&quot;?
+            </DialogTitle>
+            <DialogDescription>
+              {pendingStatus === "delivered"
+                ? "This will mark the order as delivered. This action is irreversible — the status cannot be changed afterwards."
+                : "This will cancel the order. This action is irreversible — the status cannot be changed afterwards."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingStatus(null)}>Go Back</Button>
+            <Button
+              variant="default"
+              className={pendingStatus === "cancelled" ? "bg-destructive hover:bg-destructive/90 text-white" : ""}
+              onClick={() => {
+                if (pendingStatus) void updateOrder({ status: pendingStatus });
+                setPendingStatus(null);
+              }}
+            >
+              Confirm — Mark as {pendingStatus}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

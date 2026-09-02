@@ -6,7 +6,9 @@ import { MoreHorizontal } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 type OrderRow = {
@@ -40,6 +42,8 @@ const paymentColors: Record<string, string> = {
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; order_number: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
   const totalCount = useMemo(() => orders.length, [orders]);
@@ -61,6 +65,22 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     void fetchOrders();
   }, []);
+
+  const deleteOrder = async (id: string) => {
+    try {
+      setDeleting(true);
+      const response = await fetch(`/api/admin/orders/${id}`, { method: "DELETE" });
+      const json = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(json.error || "Failed to delete order");
+      toast.success("Order deleted");
+      setDeleteTarget(null);
+      await fetchOrders();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete order");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const updateOrder = async (
     id: string,
@@ -149,6 +169,13 @@ export default function AdminOrdersPage() {
                           <DropdownMenuItem onClick={() => void updateOrder(order.id, { status: "cancelled" })}>Mark Cancelled</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => void updateOrder(order.id, { payment_status: "paid" })}>Mark Paid</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => void updateOrder(order.id, { payment_status: "refunded" })}>Mark Refunded</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-600"
+                            onClick={() => setDeleteTarget({ id: order.id, order_number: order.order_number })}
+                          >
+                            Delete Order
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -159,6 +186,29 @@ export default function AdminOrdersPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Order</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            Are you sure you want to delete order{" "}
+            <span className="font-mono font-semibold text-foreground">{deleteTarget?.order_number}</span>?
+            This action cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => deleteTarget && void deleteOrder(deleteTarget.id)}
+            >
+              {deleting ? "Deleting..." : "Delete Order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

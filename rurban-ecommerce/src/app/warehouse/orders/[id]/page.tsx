@@ -292,7 +292,7 @@ export default function WarehouseOrderDetailPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pl-11 sm:pl-0">
+        <div className="flex items-center gap-2 flex-wrap pl-11 sm:pl-0">
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={updating}

@@ -381,7 +381,7 @@ export default function WarehouseOrderDetailPage() {
       <div className="po-document bg-white text-[#1a1a1a] border border-[#d1d5db] max-w-[900px] mx-auto text-[13px] print:max-w-none print:border-0 print:shadow-none" style={{ fontFamily: "Arial, sans-serif" }}>
 
         {/* ── SECTION 1: Company header ──────────────────────────── */}
-        <div className="flex items-start border-b border-[#d1d5db]">
+        <div className="flex flex-col sm:flex-row items-start border-b border-[#d1d5db]">
           <div className="flex items-start gap-3 flex-1 px-5 pt-4 pb-3">
             <div className="shrink-0 w-[72px]">
               <Image
@@ -403,14 +403,14 @@ export default function WarehouseOrderDetailPage() {
               <p className="text-[11px] mt-1">UNIT NAME: {COMPANY.unit}</p>
             </div>
           </div>
-          <div className="shrink-0 px-5 pt-4 pb-3 flex items-start">
-            <p className="text-[32px] font-black tracking-wide text-[#1a1a1a] uppercase leading-none">ORDER SUMMARY</p>
+          <div className="px-5 pt-2 pb-3 sm:pt-4 flex items-start">
+            <p className="text-[24px] sm:text-[32px] font-black tracking-wide text-[#1a1a1a] uppercase leading-none">ORDER SUMMARY</p>
           </div>
         </div>
 
         {/* ── SECTION 2: Order meta info ─────────────────────────── */}
-        <div className="grid grid-cols-2 border-b border-[#d1d5db]">
-          <div className="px-5 py-2 border-r border-[#d1d5db] space-y-[3px]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 border-b border-[#d1d5db]">
+          <div className="px-5 py-2 border-b sm:border-b-0 sm:border-r border-[#d1d5db] space-y-[3px]">
             <div className="flex gap-1 text-[11px]">
               <span className="font-semibold w-[110px] shrink-0">Purchase Order# </span>
               <span>: <strong>{order.order_number}</strong></span>
@@ -441,16 +441,16 @@ export default function WarehouseOrderDetailPage() {
         </div>
 
         {/* ── SECTION 3: Vendor Address / Deliver To ─────────────── */}
-        <div className="grid grid-cols-2 border-b border-[#d1d5db]">
-          <div className="px-5 py-[5px] border-r border-[#d1d5db] bg-[#f3f4f6]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 border-b border-[#d1d5db]">
+          <div className="px-5 py-[5px] border-b sm:border-b-0 sm:border-r border-[#d1d5db] bg-[#f3f4f6]">
             <p className="font-bold text-[12px]">Vendor Address</p>
           </div>
           <div className="px-5 py-[5px] bg-[#f3f4f6]">
             <p className="font-bold text-[12px]">Deliver To</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 border-b border-[#d1d5db]">
-          <div className="px-5 py-3 border-r border-[#d1d5db] leading-[1.6] text-[11px]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 border-b border-[#d1d5db]">
+          <div className="px-5 py-3 border-b sm:border-b-0 sm:border-r border-[#d1d5db] leading-[1.6] text-[11px]">
             <p className="font-bold text-[12px]">{COMPANY.name}</p>
             <p>{COMPANY.formerly}</p>
             <p>Dispatched From: {COMPANY.dispatch}</p>
@@ -475,7 +475,8 @@ export default function WarehouseOrderDetailPage() {
         </div>
 
         {/* ── SECTION 4: Items Table ──────────────────────────────── */}
-        <table className="w-full border-collapse text-[11px]">
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[11px] min-w-[560px]">
           <thead>
             <tr style={{ backgroundColor: "#4b5563", color: "#fff" }}>
               <th className="border border-[#6b7280] px-2 py-[6px] text-center font-semibold w-7">#</th>
@@ -522,10 +523,11 @@ export default function WarehouseOrderDetailPage() {
             })}
           </tbody>
         </table>
+        </div>
 
         {/* ── SECTION 5: Footer — Items total / Tax / Signature ───── */}
-        <div className="flex border-t border-[#d1d5db]">
-          <div className="flex-1 px-5 py-3 border-r border-[#d1d5db]">
+        <div className="flex flex-col sm:flex-row border-t border-[#d1d5db]">
+          <div className="flex-1 px-5 py-3 border-b sm:border-b-0 sm:border-r border-[#d1d5db]">
             <p className="font-semibold text-[11px]">Items in Total {totalQty}.000</p>
             {order.notes && (
               <p className="text-[11px] text-gray-600 mt-1">{order.notes}</p>
@@ -537,7 +539,7 @@ export default function WarehouseOrderDetailPage() {
             </div>
           </div>
 
-          <div className="w-[280px] shrink-0">
+          <div className="w-full sm:w-[280px] shrink-0">
             <div className="flex justify-between px-4 py-[4px] text-[11px] border-b border-[#e5e7eb]">
               <span>Sub Total</span>
               <span className="font-mono">{fmt(Number(order.subtotal))}</span>
